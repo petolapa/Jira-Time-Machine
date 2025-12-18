@@ -56,6 +56,9 @@ const App = () => {
   // Tracks whether we have been waiting "too long" for Jira to provide context.
   // This helps surface a clearer message if the app is not correctly installed.
   const [contextTimedOut, setContextTimedOut] = useState(false);
+  // Tracks if we received a 403 permission error when trying to fetch Jira issues.
+  // This indicates the app needs to be re-installed or permissions need to be granted.
+  const [hasPermissionError, setHasPermissionError] = useState(false);
 
   /**
    * Fetch issues for the current project using the Forge bridge.
@@ -126,10 +129,19 @@ const App = () => {
         setTotalIssueCount(total);
         setOpenIssueCount(openCount);
         setOverdueCount(overdue);
+        // Clear any previous permission error if the fetch succeeded.
+        setHasPermissionError(false);
       } catch (error) {
         // We log errors to the Forge logs; the UI will gracefully fall back
         // to showing zero analyzed issues rather than failing hard.
         console.error('Failed to fetch Jira issues for risk analysis', error);
+
+        // Check if this is a 403 permission error. The error might be a Response object
+        // with a status property, or it might be structured differently.
+        const status = error?.status || error?.response?.status;
+        if (status === 403) {
+          setHasPermissionError(true);
+        }
       }
     };
 
@@ -259,6 +271,18 @@ const App = () => {
     <Box padding="space.400">
       {/* Main title matching the thesis concept */}
       <Heading size="large">AI World Model: Future Simulator</Heading>
+
+      {/* Permission error message - show prominently if we got a 403 */}
+      {hasPermissionError && (
+        <Box paddingBlock="space.300">
+          <SectionMessage appearance="error" title="Permission denied">
+            <Text>
+              Permission denied. Please try to refresh the page or re-install the app to trigger
+              the access prompt.
+            </Text>
+          </SectionMessage>
+        </Box>
+      )}
 
       {/* Emergent workflow input sliders */}
       <Box paddingBlock="space.300">
