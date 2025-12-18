@@ -76,11 +76,13 @@ const App = () => {
     const fetchIssues = async () => {
       try {
         // Basic JQL: all issues in the current project.
-        const jql = `project = ${projectKey}`;
+        // Use quotes around the project key to ensure proper JQL syntax.
+        const jql = 'project = "' + projectKey + '"';
 
         // Request both status and duedate fields to detect overdue tasks.
+        // Using API version 2 for better compatibility.
         const response = await requestJira(
-          `/rest/api/3/search?jql=${encodeURIComponent(
+          `/rest/api/2/search?jql=${encodeURIComponent(
             jql
           )}&maxResults=1000&fields=status,duedate`
         );
@@ -135,6 +137,18 @@ const App = () => {
         // We log errors to the Forge logs; the UI will gracefully fall back
         // to showing zero analyzed issues rather than failing hard.
         console.error('Failed to fetch Jira issues for risk analysis', error);
+
+        // Enhanced error logging to help diagnose API issues.
+        // Try to extract response text if available, otherwise log the error object.
+        try {
+          const errorDetails = error.response
+            ? await error.response.text()
+            : error;
+          console.error('API Error details:', errorDetails);
+        } catch (logError) {
+          // If we can't read the response text, just log the original error.
+          console.error('API Error details:', error);
+        }
 
         // Check if this is a 403 permission error. The error might be a Response object
         // with a status property, or it might be structured differently.
@@ -283,6 +297,19 @@ const App = () => {
           </SectionMessage>
         </Box>
       )}
+
+      {/* Feedback if no issues were found but there was no error */}
+      {!hasPermissionError &&
+        totalIssueCount === 0 &&
+        platformContext?.project?.key && (
+          <Box paddingBlock="space.300">
+            <SectionMessage appearance="warning" title="No issues found">
+              <Text>
+                Check if JQL is matching any issues in project {platformContext.project.key}.
+              </Text>
+            </SectionMessage>
+          </Box>
+        )}
 
       {/* Emergent workflow input sliders */}
       <Box paddingBlock="space.300">
