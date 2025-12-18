@@ -26,6 +26,9 @@ import { requestJira } from '@forge/bridge';
  *       for the "Emergent Workflows" thesis.
  */
 const App = () => {
+  // Simple debug marker so we can verify that the UI has actually mounted.
+  console.log('App started');
+
   // Jira context (e.g. current project) so that we can scope our risk analysis
   // to the project where the app is opened.
   //
@@ -45,6 +48,9 @@ const App = () => {
   // Metrics derived from live Jira data for the current project.
   const [totalIssueCount, setTotalIssueCount] = useState(0);
   const [openIssueCount, setOpenIssueCount] = useState(0);
+  // Tracks whether we have been waiting "too long" for Jira to provide context.
+  // This helps surface a clearer message if the app is not correctly installed.
+  const [contextTimedOut, setContextTimedOut] = useState(false);
 
   /**
    * Fetch issues for the current project using the Forge bridge.
@@ -100,6 +106,28 @@ const App = () => {
       isCancelled = true;
     };
   }, [platformContext?.project?.key]);
+
+  /**
+   * Monitor the availability of the product context and trigger a timeout
+   * if we have been waiting for more than 5 seconds.
+   */
+  useEffect(() => {
+    // If we already have a project key, there is no need to start or keep a timeout.
+    if (platformContext && platformContext.project?.key) {
+      setContextTimedOut(false);
+      return;
+    }
+
+    // Start a 5 second timer; if the context is still missing when it fires,
+    // we mark the timeout so the UI can give a more actionable hint.
+    const timeoutId = setTimeout(() => {
+      setContextTimedOut(true);
+    }, 5000);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [platformContext]);
 
   /**
    * Given a probability percentage, return a short strategic recommendation
@@ -177,7 +205,13 @@ const App = () => {
   if (!platformContext || !platformContext.project?.key) {
     return (
       <Box padding="space.400">
-        <Text>Loading context...</Text>
+        {!contextTimedOut ? (
+          <Text>Loading context...</Text>
+        ) : (
+          <Text>
+            Still waiting for Jira context. Please ensure the app is installed on this site.
+          </Text>
+        )}
       </Box>
     );
   }
