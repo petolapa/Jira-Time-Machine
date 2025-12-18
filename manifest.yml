@@ -12,6 +12,10 @@ modules:
 resources:
   - key: main
     path: src/frontend/index.jsx
+permissions:
+  scopes:
+    # Required to read issues via requestJira in the project where the app is installed.
+    - read:jira-work
 app:
   runtime:
     name: nodejs24.x
