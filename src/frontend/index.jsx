@@ -36,6 +36,8 @@ const App = () => {
   // the UI context, so we *do not* destructure directly from it. Instead we read
   // it into a variable and perform null checks before use.
   const productContext = useProductContext();
+  // Debug logging to inspect what context we're actually receiving from Forge.
+  console.log('DEBUG - productContext:', productContext);
   const platformContext = productContext && productContext.platformContext;
 
   // status can be: 'idle' | 'running' | 'complete'
@@ -48,14 +50,17 @@ const App = () => {
   // Metrics derived from live Jira data for the current project.
   const [totalIssueCount, setTotalIssueCount] = useState(0);
   const [openIssueCount, setOpenIssueCount] = useState(0);
+  // Count of issues that have passed their due date but are not yet completed.
+  // This is a key indicator of emergent workflow delays and systemic bottlenecks.
+  const [overdueCount, setOverdueCount] = useState(0);
   // Tracks whether we have been waiting "too long" for Jira to provide context.
   // This helps surface a clearer message if the app is not correctly installed.
   const [contextTimedOut, setContextTimedOut] = useState(false);
 
   /**
    * Fetch issues for the current project using the Forge bridge.
-   * We only request status information to keep the payload light, and then
-   * derive how many of those issues are in "To Do" or "In Progress" states.
+   * We request status and duedate fields to analyze both open issues and overdue tasks,
+   * which are key signals of emergent workflow delays.
    */
   useEffect(() => {
     const projectKey = platformContext?.project?.key;
@@ -70,10 +75,11 @@ const App = () => {
         // Basic JQL: all issues in the current project.
         const jql = `project = ${projectKey}`;
 
+        // Request both status and duedate fields to detect overdue tasks.
         const response = await requestJira(
           `/rest/api/3/search?jql=${encodeURIComponent(
             jql
-          )}&maxResults=1000&fields=status`
+          )}&maxResults=1000&fields=status,duedate`
         );
         const data = await response.json();
 
@@ -84,6 +90,10 @@ const App = () => {
         const issues = Array.isArray(data.issues) ? data.issues : [];
         const total = typeof data.total === 'number' ? data.total : issues.length;
 
+        // Current date for comparison (we use the start of today to avoid timezone issues).
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
         // Count open issues based on Jira statusCategory: "To Do" or "In Progress".
         const openCount = issues.filter((issue) => {
           const statusCategoryName =
@@ -91,8 +101,31 @@ const App = () => {
           return statusCategoryName === 'To Do' || statusCategoryName === 'In Progress';
         }).length;
 
+        // Count overdue issues: those with a duedate in the past that are not "Done".
+        let overdue = 0;
+        issues.forEach((issue) => {
+          const duedateStr = issue?.fields?.duedate;
+          const statusCategoryName =
+            issue?.fields?.status?.statusCategory?.name || '';
+
+          // Only count as overdue if:
+          // 1. The issue has a duedate set
+          // 2. The duedate is in the past (before today)
+          // 3. The issue is not in "Done" status
+          if (duedateStr && statusCategoryName !== 'Done') {
+            // Jira returns duedate as YYYY-MM-DD string.
+            const duedate = new Date(duedateStr);
+            duedate.setHours(0, 0, 0, 0);
+
+            if (duedate < today) {
+              overdue++;
+            }
+          }
+        });
+
         setTotalIssueCount(total);
         setOpenIssueCount(openCount);
+        setOverdueCount(overdue);
       } catch (error) {
         // We log errors to the Forge logs; the UI will gracefully fall back
         // to showing zero analyzed issues rather than failing hard.
@@ -178,6 +211,11 @@ const App = () => {
       baselineRisk = baselineRisk * 1.1;
     }
 
+    // --- 1b. Overdue tasks amplify baseline risk ---
+    // Each overdue task increases baseline risk by 15% to reflect the compounding
+    // effect of missed deadlines on emergent workflow delays.
+    baselineRisk = baselineRisk * (1 + overdueCount * 0.15);
+
     // --- 2. Emergent system contribution from complexity + randomness ---
     const emergentComponent = systemComplexity * 0.4 + Math.random() * 20;
 
@@ -199,10 +237,11 @@ const App = () => {
     }, 2500);
   };
 
-  // If we don't yet have a valid platform context (for example, while Forge is
+  // If we don't yet have a valid product context (for example, while Forge is
   // still initialising the bridge between Jira and the app), render a light
   // placeholder instead of crashing.
-  if (!platformContext || !platformContext.project?.key) {
+  // Changed to check productContext directly to see if we're getting any context at all.
+  if (!productContext) {
     return (
       <Box padding="space.400">
         {!contextTimedOut ? (
@@ -300,10 +339,31 @@ const App = () => {
       {status === 'complete' && (
         <Box paddingBlock="space.400">
           <Stack space="space.200">
+            {/* Display analyzed issue metrics including overdue count */}
+            <Text>
+              Analyzed {openIssueCount} active issues ({overdueCount} overdue)
+            </Text>
+
             <Text>
               Simulation complete. Probability of delay:{' '}
               {delayProbability != null ? `${delayProbability}%` : 'N/A'}.
             </Text>
+
+            {/* Warning for systemic delay spiral if >50% of open issues are overdue */}
+            {openIssueCount > 0 &&
+              overdueCount > 0 &&
+              overdueCount / openIssueCount > 0.5 && (
+                <SectionMessage
+                  title="Systemic delay spiral detected"
+                  appearance="error"
+                >
+                  <Text>
+                    Systemic delay spiral detected due to overdue backlog items. More than 50% of
+                    active issues are past their due date, indicating a workflow breakdown that
+                    requires immediate intervention.
+                  </Text>
+                </SectionMessage>
+              )}
 
             {/* Strategic guidance based on the emergent risk profile */}
             {delayProbability != null && (
