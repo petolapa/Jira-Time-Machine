@@ -1,0 +1,20 @@
+modules:
+  jira:projectPage:
+    - key: jira-time-machine-hello-world-project-page
+      resource: main
+      resolver:
+        function: resolver
+      render: native
+      title: Jira Time Machine
+  function:
+    - key: resolver
+      handler: index.handler
+resources:
+  - key: main
+    path: src/frontend/index.jsx
+app:
+  runtime:
+    name: nodejs24.x
+    memoryMB: 256
+    architecture: arm64
+  id: ari:cloud:ecosystem::app/0087095c-82be-4370-83d9-04e01de63d75
