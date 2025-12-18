@@ -7,8 +7,9 @@ import ForgeReconciler, {
   Range,
   SectionMessage,
   Stack,
+  useProductContext,
 } from '@forge/react';
-import { useProductContext, requestJira } from '@forge/bridge';
+import { requestJira } from '@forge/bridge';
 
 /**
  * Project Page UI for "AI World Model: Future Simulator".
@@ -27,7 +28,12 @@ import { useProductContext, requestJira } from '@forge/bridge';
 const App = () => {
   // Jira context (e.g. current project) so that we can scope our risk analysis
   // to the project where the app is opened.
-  const { platformContext } = useProductContext();
+  //
+  // NOTE: useProductContext() can be temporarily undefined while Forge initialises
+  // the UI context, so we *do not* destructure directly from it. Instead we read
+  // it into a variable and perform null checks before use.
+  const productContext = useProductContext();
+  const platformContext = productContext && productContext.platformContext;
 
   // status can be: 'idle' | 'running' | 'complete'
   const [status, setStatus] = useState('idle');
@@ -164,6 +170,17 @@ const App = () => {
       setStatus('complete');
     }, 2500);
   };
+
+  // If we don't yet have a valid platform context (for example, while Forge is
+  // still initialising the bridge between Jira and the app), render a light
+  // placeholder instead of crashing.
+  if (!platformContext || !platformContext.project?.key) {
+    return (
+      <Box padding="space.400">
+        <Text>Loading context...</Text>
+      </Box>
+    );
+  }
 
   return (
     <Box padding="space.400">
