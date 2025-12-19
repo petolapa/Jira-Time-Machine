@@ -66,15 +66,22 @@ const App = () => {
 
   /**
    * Fetch simulation data using backend resolver to avoid 403 permission errors.
-   * This fetches test data (KAN-1, KAN-2, KAN-3) for "What-if" scenario validation.
+   * This now uses the current Jira project context so the app is fully
+   * context-aware instead of relying on hardcoded issue keys.
    */
   useEffect(() => {
+    const projectKey = platformContext?.project?.key;
+    if (!projectKey) {
+      // Wait until we have a valid project context from Forge.
+      return;
+    }
+
     let isCancelled = false;
 
     const fetchSimulationData = async () => {
       try {
-        console.log('[Frontend] Calling invoke("fetchSimulationData")...');
-        const result = await invoke('fetchSimulationData');
+        console.log('[Frontend] Calling invoke("fetchSimulationData") with projectKey:', projectKey);
+        const result = await invoke('fetchSimulationData', { projectKey });
         
         console.log('[Frontend] Received result:', result);
         console.log('[Frontend] Result type:', typeof result);
@@ -116,7 +123,7 @@ const App = () => {
     return () => {
       isCancelled = true;
     };
-  }, []);
+  }, [platformContext?.project?.key]);
 
   /**
    * Monitor the availability of the product context and trigger a timeout

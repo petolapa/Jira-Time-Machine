@@ -12,11 +12,18 @@ const resolver = new Resolver();
  */
 resolver.define('fetchSimulationData', async (req) => {
   try {
-    // Simplified JQL: target keys directly (globally unique in Jira)
-    // This avoids project matching issues
-    const jql = 'key in (KAN-1, KAN-2, KAN-3)';
-    
-    console.log('[Backend] Executing JQL query:', jql);
+    const projectKey = req?.payload?.projectKey;
+
+    if (!projectKey) {
+      console.error('[Backend] fetchSimulationData called without projectKey in payload');
+      // Return empty list so frontend can show a helpful message rather than crashing.
+      return [];
+    }
+
+    // Dynamic JQL based on the current project context.
+    // We only fetch unresolved issues to keep the simulation focused on active work.
+    const jql = `project = "${projectKey}" AND resolution = Unresolved ORDER BY rank DESC`;
+    console.log('[Backend] Executing JQL query for project:', projectKey, 'JQL:', jql);
 
     // NEW ENDPOINT: /rest/api/3/search/jql (Strictly compliant with error message)
     // NOTE: The URL below MUST NOT have any '?' or parameters attached.
@@ -27,11 +34,11 @@ resolver.define('fetchSimulationData', async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        jql: 'key in (KAN-1, KAN-2, KAN-3)',
+        jql,
         // Note: 'search/jql' endpoint sometimes uses 'fields' differently,
         // but we start with the standard structure.
         fields: ['summary', 'status', 'assignee', 'duedate', 'priority'],
-        maxResults: 100,
+        maxResults: 50,
       }),
     });
     const data = await response.json();
