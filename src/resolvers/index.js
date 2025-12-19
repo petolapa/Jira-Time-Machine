@@ -12,7 +12,11 @@ const resolver = new Resolver();
  */
 resolver.define('fetchSimulationData', async (req) => {
   try {
-    const projectKey = req?.payload?.projectKey;
+    const payload = req?.payload || {};
+    const { projectKey } = payload;
+
+    console.log('Backend: Received Payload:', payload);
+    console.log('Backend: Using Project Key:', projectKey);
 
     if (!projectKey) {
       console.error('[Backend] fetchSimulationData called without projectKey in payload');

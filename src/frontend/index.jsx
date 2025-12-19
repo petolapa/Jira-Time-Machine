@@ -70,11 +70,29 @@ const App = () => {
    * context-aware instead of relying on hardcoded issue keys.
    */
   useEffect(() => {
-    const projectKey = platformContext?.project?.key;
+    // DEBUG: Inspect the raw context we get from Forge.
+    console.log('Frontend: Raw Context:', productContext);
+
+    const extensionProjectKey =
+      productContext?.extension?.project?.key ||
+      productContext?.extension?.projectKey ||
+      null;
+
+    if (extensionProjectKey) {
+      console.log('Frontend: Detected Project Key from extension context:', extensionProjectKey);
+    } else {
+      console.log('Frontend: Context not ready or project key missing in extension context.');
+    }
+
+    const projectKey = extensionProjectKey || platformContext?.project?.key || null;
+
     if (!projectKey) {
       // Wait until we have a valid project context from Forge.
+      console.log('Frontend: No projectKey available yet, skipping fetchSimulationData.');
       return;
     }
+
+    console.log('Frontend: Using Project Key for simulation fetch:', projectKey);
 
     let isCancelled = false;
 
@@ -123,7 +141,7 @@ const App = () => {
     return () => {
       isCancelled = true;
     };
-  }, [platformContext?.project?.key]);
+  }, [productContext]);
 
   /**
    * Monitor the availability of the product context and trigger a timeout
