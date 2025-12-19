@@ -65,11 +65,11 @@ const App = () => {
   const [hasFetchedSimulationData, setHasFetchedSimulationData] = useState(false);
 
   /**
-   * Fetch simulation data using backend resolver to avoid 403 permission errors.
-   * This now uses the current Jira project context so the app is fully
-   * context-aware instead of relying on hardcoded issue keys.
+   * Shared helper to (re)fetch simulation data for the current project.
+   * This is used both on initial mount (via useEffect) and when the user
+   * presses the "Refresh Data" button.
    */
-  useEffect(() => {
+  const refreshSimulationData = async () => {
     // DEBUG: Inspect the raw context we get from Forge.
     console.log('Frontend: Raw Context:', productContext);
 
@@ -79,68 +79,76 @@ const App = () => {
       null;
 
     if (extensionProjectKey) {
-      console.log('Frontend: Detected Project Key from extension context:', extensionProjectKey);
+      console.log(
+        'Frontend: Detected Project Key from extension context:',
+        extensionProjectKey
+      );
     } else {
-      console.log('Frontend: Context not ready or project key missing in extension context.');
+      console.log(
+        'Frontend: Context not ready or project key missing in extension context.'
+      );
     }
 
     const projectKey = extensionProjectKey || platformContext?.project?.key || null;
 
     if (!projectKey) {
-      // Wait until we have a valid project context from Forge.
-      console.log('Frontend: No projectKey available yet, skipping fetchSimulationData.');
+      console.log(
+        'Frontend: No projectKey available yet, skipping fetchSimulationData.'
+      );
       return;
     }
 
     console.log('Frontend: Using Project Key for simulation fetch:', projectKey);
 
-    let isCancelled = false;
+    try {
+      console.log(
+        '[Frontend] Calling invoke("fetchSimulationData") with projectKey:',
+        projectKey
+      );
+      const result = await invoke('fetchSimulationData', { projectKey });
 
-    const fetchSimulationData = async () => {
-      try {
-        console.log('[Frontend] Calling invoke("fetchSimulationData") with projectKey:', projectKey);
-        const result = await invoke('fetchSimulationData', { projectKey });
-        
-        console.log('[Frontend] Received result:', result);
-        console.log('[Frontend] Result type:', typeof result);
-        console.log('[Frontend] Result is array?', Array.isArray(result));
-        console.log('[Frontend] Result length:', Array.isArray(result) ? result.length : 'N/A');
-        
-        if (isCancelled) {
-          return;
-        }
+      console.log('[Frontend] Received result:', result);
+      console.log('[Frontend] Result type:', typeof result);
+      console.log('[Frontend] Result is array?', Array.isArray(result));
+      console.log(
+        '[Frontend] Result length:',
+        Array.isArray(result) ? result.length : 'N/A'
+      );
 
-        const tasks = Array.isArray(result) ? result : [];
-        setSimulationTasks(tasks);
-        setHasFetchedSimulationData(true);
-        setHasPermissionError(false);
-        
-        console.log('[Frontend] Set simulationTasks to:', tasks);
-        console.log('[Frontend] Task count:', tasks.length);
-      } catch (error) {
-        console.error('[Frontend] Failed to fetch simulation data:', error);
-        console.error('[Frontend] Error details:', {
-          message: error.message,
-          stack: error.stack,
-          status: error?.status || error?.response?.status
-        });
-        
-        setSimulationTasks([]);
-        setHasFetchedSimulationData(true);
-        
-        // Check if this is a 403 permission error
-        const status = error?.status || error?.response?.status;
-        if (status === 403) {
-          setHasPermissionError(true);
-        }
+      const tasks = Array.isArray(result) ? result : [];
+      setSimulationTasks(tasks);
+      setHasFetchedSimulationData(true);
+      setHasPermissionError(false);
+
+      console.log('[Frontend] Set simulationTasks to:', tasks);
+      console.log('[Frontend] Task count:', tasks.length);
+    } catch (error) {
+      console.error('[Frontend] Failed to fetch simulation data:', error);
+      console.error('[Frontend] Error details:', {
+        message: error.message,
+        stack: error.stack,
+        status: error?.status || error?.response?.status,
+      });
+
+      setSimulationTasks([]);
+      setHasFetchedSimulationData(true);
+
+      const statusCode = error?.status || error?.response?.status;
+      if (statusCode === 403) {
+        setHasPermissionError(true);
       }
-    };
+    }
+  };
 
-    fetchSimulationData();
+  /**
+   * Initial data fetch once we have a product context.
+   */
+  useEffect(() => {
+    if (!productContext) {
+      return;
+    }
 
-    return () => {
-      isCancelled = true;
-    };
+    refreshSimulationData();
   }, [productContext]);
 
   /**
@@ -409,10 +417,9 @@ const App = () => {
         <Button
           appearance="primary" // Primary buttons are blue in Jira/Atlassian products.
           shouldFitContainer
-          onClick={handlePlaySimulation}
+          onClick={refreshSimulationData}
         >
-          {/* Using the play symbol directly in the label for clarity */}
-          ▶ Play Simulation
+          🔄 Refresh Data
         </Button>
       </Box>
 
@@ -439,35 +446,19 @@ const App = () => {
         </Box>
       )}
 
-      {/* Final result once the "simulation" is complete */}
-      {status === 'complete' && (
+      {/* Footer summary and strategic advice driven by live simulation data */}
+      {simulationTasks.length > 0 && (
         <Box paddingBlock="space.400">
           <Stack space="space.200">
-            {/* Display analyzed issue metrics including overdue count */}
+            {/* Display analyzed issue metrics based on the number of tasks fetched */}
             <Text>
-              Analyzed {openIssueCount} active issues ({overdueCount} overdue)
+              Analyzed {simulationTasks.length} active issues.
             </Text>
 
             <Text>
               Simulation complete. Probability of delay:{' '}
               {delayProbability != null ? `${delayProbability}%` : 'N/A'}.
             </Text>
-
-            {/* Warning for systemic delay spiral if >50% of open issues are overdue */}
-            {openIssueCount > 0 &&
-              overdueCount > 0 &&
-              overdueCount / openIssueCount > 0.5 && (
-                <SectionMessage
-                  title="Systemic delay spiral detected"
-                  appearance="error"
-                >
-                  <Text>
-                    Systemic delay spiral detected due to overdue backlog items. More than 50% of
-                    active issues are past their due date, indicating a workflow breakdown that
-                    requires immediate intervention.
-                  </Text>
-                </SectionMessage>
-              )}
 
             {/* Strategic guidance based on the emergent risk profile */}
             {delayProbability != null && (
