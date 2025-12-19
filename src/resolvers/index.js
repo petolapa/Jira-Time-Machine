@@ -18,8 +18,9 @@ resolver.define('fetchSimulationData', async (req) => {
     
     console.log('[Backend] Executing JQL query:', jql);
 
-    // NEW: Correct POST implementation for Jira Cloud
-    const response = await asUser().requestJira(route`/rest/api/3/search`, {
+    // NEW ENDPOINT: /rest/api/3/search/jql (Strictly compliant with error message)
+    // NOTE: The URL below MUST NOT have any '?' or parameters attached.
+    const response = await asUser().requestJira(route`/rest/api/3/search/jql`, {
       method: 'POST',
       headers: {
         Accept: 'application/json',
@@ -27,6 +28,8 @@ resolver.define('fetchSimulationData', async (req) => {
       },
       body: JSON.stringify({
         jql: 'key in (KAN-1, KAN-2, KAN-3)',
+        // Note: 'search/jql' endpoint sometimes uses 'fields' differently,
+        // but we start with the standard structure.
         fields: ['summary', 'status', 'assignee', 'duedate', 'priority'],
         maxResults: 100,
       }),
