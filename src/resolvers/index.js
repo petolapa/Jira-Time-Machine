@@ -18,23 +18,19 @@ resolver.define('fetchSimulationData', async (req) => {
     
     console.log('[Backend] Executing JQL query:', jql);
 
-    // Use asUser() to make the request with proper permissions
-    // Switch to POST /rest/api/3/search with body payload as required by Jira API
-    const response = await asUser().requestJira(
-      route`/rest/api/3/search`,
-      {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          jql: 'key in (KAN-1, KAN-2, KAN-3)',
-          fields: ['summary', 'status', 'assignee', 'duedate', 'priority'],
-          maxResults: 100,
-        }),
-      }
-    );
+    // NEW: Correct POST implementation for Jira Cloud
+    const response = await asUser().requestJira(route`/rest/api/3/search`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        jql: 'key in (KAN-1, KAN-2, KAN-3)',
+        fields: ['summary', 'status', 'assignee', 'duedate', 'priority'],
+        maxResults: 100,
+      }),
+    });
     const data = await response.json();
     
     // Debug logging: log the raw JSON response
