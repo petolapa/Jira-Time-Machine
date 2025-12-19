@@ -165,6 +165,45 @@ const App = () => {
   };
 
   /**
+   * Calculate a simple "What-if" simulation for a single task based on the
+   * current slider values for team cognitive load and system complexity.
+   *
+   * - Normalises sliders (0–100) into a factor.
+   * - If factor > 0.5, we add delay days to the original due date.
+   * - If there is no due date, we treat "today" as the starting point.
+   * - Returns formatted dates and a qualitative risk level.
+   */
+  const calculateSimulation = (task, load, complexity) => {
+    const normalisedFactor = (load + complexity) / 100;
+
+    // Base delay: only apply if factor is meaningfully high.
+    const delayDays = normalisedFactor > 0.5 ? Math.ceil(normalisedFactor * 10) : 0;
+
+    // Use task due date if available, otherwise treat today as the baseline.
+    const baseDate = task.duedate ? new Date(task.duedate) : new Date();
+    baseDate.setHours(0, 0, 0, 0);
+
+    const simulatedDate = new Date(baseDate);
+    simulatedDate.setDate(simulatedDate.getDate() + delayDays);
+
+    const formatDate = (date) => date.toISOString().slice(0, 10); // YYYY-MM-DD
+
+    let riskLevel = 'Low';
+    if (delayDays >= 8) {
+      riskLevel = 'High';
+    } else if (delayDays >= 3) {
+      riskLevel = 'Medium';
+    }
+
+    return {
+      delayDays,
+      originalDate: formatDate(baseDate),
+      simulatedDate: formatDate(simulatedDate),
+      riskLevel,
+    };
+  };
+
+  /**
    * Handle click on "Play Simulation".
    * We combine:
    *  - Live Jira signal: number of currently open issues (To Do / In Progress)
@@ -262,10 +301,26 @@ const App = () => {
                 backgroundColor="color.background.neutral.subtle"
                 borderRadius="border.radius.200"
               >
-                <Text>
-                  {task.key} ({task.status?.name || 'Unknown status'}): {task.summary} —{' '}
-                  {task.assignee ? task.assignee.displayName : 'Unassigned'}
-                </Text>
+                {(() => {
+                  const sim = calculateSimulation(task, teamCognitiveLoad, systemComplexity);
+                  return (
+                    <Stack space="space.050">
+                      <Text>
+                        {task.key} ({task.status?.name || 'Unknown status'}): {task.summary}
+                      </Text>
+                      <Text>
+                        📅 Original: {sim.originalDate} → 🔮 Simulated: {sim.simulatedDate}{' '}
+                        {sim.delayDays > 0
+                          ? `( +${sim.delayDays} days, ${sim.riskLevel} risk )`
+                          : '( On track )'}
+                      </Text>
+                      <Text>
+                        Assignee:{' '}
+                        {task.assignee ? task.assignee.displayName : 'Unassigned'}
+                      </Text>
+                    </Stack>
+                  );
+                })()}
               </Box>
             ))}
           </Stack>
