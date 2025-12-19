@@ -9,7 +9,7 @@ import ForgeReconciler, {
   Stack,
   useProductContext,
 } from '@forge/react';
-import { requestJira } from '@forge/bridge';
+import { invoke } from '@forge/bridge';
 
 /**
  * Project Page UI for "AI World Model: Future Simulator".
@@ -59,99 +59,51 @@ const App = () => {
   // Tracks if we received a 403 permission error when trying to fetch Jira issues.
   // This indicates the app needs to be re-installed or permissions need to be granted.
   const [hasPermissionError, setHasPermissionError] = useState(false);
+  // Simulation tasks fetched from backend resolver (for "What-if" scenarios)
+  const [simulationTasks, setSimulationTasks] = useState([]);
+  // Track if we've attempted to fetch simulation data
+  const [hasFetchedSimulationData, setHasFetchedSimulationData] = useState(false);
 
   /**
-   * Fetch issues for the current project using the Forge bridge.
-   * We request status and duedate fields to analyze both open issues and overdue tasks,
-   * which are key signals of emergent workflow delays.
+   * Fetch simulation data using backend resolver to avoid 403 permission errors.
+   * This fetches test data (KAN-1, KAN-2, KAN-3) for "What-if" scenario validation.
    */
   useEffect(() => {
-    const projectKey = platformContext?.project?.key;
-    if (!projectKey) {
-      return;
-    }
-
     let isCancelled = false;
 
-    const fetchIssues = async () => {
+    const fetchSimulationData = async () => {
       try {
-        // Basic JQL: all issues in the current project.
-        // Use quotes around the project key to ensure proper JQL syntax.
-        const jql = 'project = "' + projectKey + '"';
-
-        // Request both status and duedate fields to detect overdue tasks.
-        // Using API version 2 for better compatibility.
-        const response = await requestJira(
-          `/rest/api/2/search?jql=${encodeURIComponent(
-            jql
-          )}&maxResults=1000&fields=status,duedate`
-        );
-        const data = await response.json();
-
+        console.log('[Frontend] Calling invoke("fetchSimulationData")...');
+        const result = await invoke('fetchSimulationData');
+        
+        console.log('[Frontend] Received result:', result);
+        console.log('[Frontend] Result type:', typeof result);
+        console.log('[Frontend] Result is array?', Array.isArray(result));
+        console.log('[Frontend] Result length:', Array.isArray(result) ? result.length : 'N/A');
+        
         if (isCancelled) {
           return;
         }
 
-        const issues = Array.isArray(data.issues) ? data.issues : [];
-        const total = typeof data.total === 'number' ? data.total : issues.length;
-
-        // Current date for comparison (we use the start of today to avoid timezone issues).
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        // Count open issues based on Jira statusCategory: "To Do" or "In Progress".
-        const openCount = issues.filter((issue) => {
-          const statusCategoryName =
-            issue?.fields?.status?.statusCategory?.name || '';
-          return statusCategoryName === 'To Do' || statusCategoryName === 'In Progress';
-        }).length;
-
-        // Count overdue issues: those with a duedate in the past that are not "Done".
-        let overdue = 0;
-        issues.forEach((issue) => {
-          const duedateStr = issue?.fields?.duedate;
-          const statusCategoryName =
-            issue?.fields?.status?.statusCategory?.name || '';
-
-          // Only count as overdue if:
-          // 1. The issue has a duedate set
-          // 2. The duedate is in the past (before today)
-          // 3. The issue is not in "Done" status
-          if (duedateStr && statusCategoryName !== 'Done') {
-            // Jira returns duedate as YYYY-MM-DD string.
-            const duedate = new Date(duedateStr);
-            duedate.setHours(0, 0, 0, 0);
-
-            if (duedate < today) {
-              overdue++;
-            }
-          }
-        });
-
-        setTotalIssueCount(total);
-        setOpenIssueCount(openCount);
-        setOverdueCount(overdue);
-        // Clear any previous permission error if the fetch succeeded.
+        const tasks = Array.isArray(result) ? result : [];
+        setSimulationTasks(tasks);
+        setHasFetchedSimulationData(true);
         setHasPermissionError(false);
+        
+        console.log('[Frontend] Set simulationTasks to:', tasks);
+        console.log('[Frontend] Task count:', tasks.length);
       } catch (error) {
-        // We log errors to the Forge logs; the UI will gracefully fall back
-        // to showing zero analyzed issues rather than failing hard.
-        console.error('Failed to fetch Jira issues for risk analysis', error);
-
-        // Enhanced error logging to help diagnose API issues.
-        // Try to extract response text if available, otherwise log the error object.
-        try {
-          const errorDetails = error.response
-            ? await error.response.text()
-            : error;
-          console.error('API Error details:', errorDetails);
-        } catch (logError) {
-          // If we can't read the response text, just log the original error.
-          console.error('API Error details:', error);
-        }
-
-        // Check if this is a 403 permission error. The error might be a Response object
-        // with a status property, or it might be structured differently.
+        console.error('[Frontend] Failed to fetch simulation data:', error);
+        console.error('[Frontend] Error details:', {
+          message: error.message,
+          stack: error.stack,
+          status: error?.status || error?.response?.status
+        });
+        
+        setSimulationTasks([]);
+        setHasFetchedSimulationData(true);
+        
+        // Check if this is a 403 permission error
         const status = error?.status || error?.response?.status;
         if (status === 403) {
           setHasPermissionError(true);
@@ -159,12 +111,12 @@ const App = () => {
       }
     };
 
-    fetchIssues();
+    fetchSimulationData();
 
     return () => {
       isCancelled = true;
     };
-  }, [platformContext?.project?.key]);
+  }, []);
 
   /**
    * Monitor the availability of the product context and trigger a timeout
@@ -298,18 +250,34 @@ const App = () => {
         </Box>
       )}
 
-      {/* Feedback if no issues were found but there was no error */}
-      {!hasPermissionError &&
-        totalIssueCount === 0 &&
-        platformContext?.project?.key && (
-          <Box paddingBlock="space.300">
-            <SectionMessage appearance="warning" title="No issues found">
-              <Text>
-                Check if JQL is matching any issues in project {platformContext.project.key}.
-              </Text>
-            </SectionMessage>
-          </Box>
-        )}
+      {/* Display fetched simulation tasks (temporary verification) */}
+      {simulationTasks.length > 0 && (
+        <Box paddingBlock="space.300">
+          <Heading size="medium">Simulation Tasks</Heading>
+          <Stack space="space.200">
+            {simulationTasks.map((task) => (
+              <Box key={task.key} padding="space.200" backgroundColor="color.background.neutral.subtle" borderRadius="border.radius.200">
+                <Text>
+                  <strong>{task.key}</strong>: {task.summary}
+                  {task.assignee ? ` (Assigned to: ${task.assignee.displayName})` : ' (Unassigned)'}
+                </Text>
+              </Box>
+            ))}
+          </Stack>
+        </Box>
+      )}
+
+      {/* Visual feedback if no data received from backend */}
+      {hasFetchedSimulationData && !hasPermissionError && simulationTasks.length === 0 && (
+        <Box paddingBlock="space.300">
+          <SectionMessage appearance="warning" title="No data received from backend">
+            <Text>
+              No data received from backend. Check terminal logs for backend debug output.
+              Expected keys: KAN-1, KAN-2, KAN-3
+            </Text>
+          </SectionMessage>
+        </Box>
+      )}
 
       {/* Emergent workflow input sliders */}
       <Box paddingBlock="space.300">
