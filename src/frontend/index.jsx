@@ -40,13 +40,9 @@ const App = () => {
   console.log('DEBUG - productContext:', productContext);
   const platformContext = productContext && productContext.platformContext;
 
-  // status can be: 'idle' | 'running' | 'complete'
-  const [status, setStatus] = useState('idle');
   // Slider-controlled inputs that represent key drivers of emergent workflow risk.
   const [teamCognitiveLoad, setTeamCognitiveLoad] = useState(50);
   const [systemComplexity, setSystemComplexity] = useState(50);
-  // Calculated probability of delay for the last completed simulation run.
-  const [delayProbability, setDelayProbability] = useState(null);
   // Metrics derived from live Jira data for the current project.
   const [totalIssueCount, setTotalIssueCount] = useState(0);
   const [openIssueCount, setOpenIssueCount] = useState(0);
@@ -201,16 +197,16 @@ const App = () => {
    * Calculate a simple "What-if" simulation for a single task based on the
    * current slider values for team cognitive load and system complexity.
    *
-   * - Normalises sliders (0–100) into a factor.
-   * - If factor > 0.5, we add delay days to the original due date.
-   * - If there is no due date, we treat "today" as the starting point.
-   * - Returns formatted dates and a qualitative risk level.
+   * New math (less sensitive in the safe zone, steeper in high-risk zones):
+   * - RiskScore = (load * 1.5) + complexity
+   * - Threshold = 80 (no delay until the combined score exceeds this)
+   * - DelayDays = max(0, ceil((RiskScore - Threshold) / 4))
    */
   const calculateSimulation = (task, load, complexity) => {
-    const normalisedFactor = (load + complexity) / 100;
-
-    // Base delay: only apply if factor is meaningfully high.
-    const delayDays = normalisedFactor > 0.5 ? Math.ceil(normalisedFactor * 10) : 0;
+    const riskScore = load * 1.5 + complexity;
+    const threshold = 80;
+    const delayRaw = (riskScore - threshold) / 4;
+    const delayDays = delayRaw > 0 ? Math.ceil(delayRaw) : 0;
 
     // Use task due date if available, otherwise treat today as the baseline.
     const baseDate = task.duedate ? new Date(task.duedate) : new Date();
@@ -222,9 +218,9 @@ const App = () => {
     const formatDate = (date) => date.toISOString().slice(0, 10); // YYYY-MM-DD
 
     let riskLevel = 'Low';
-    if (delayDays >= 8) {
+    if (delayDays >= 15) {
       riskLevel = 'High';
-    } else if (delayDays >= 3) {
+    } else if (delayDays >= 5) {
       riskLevel = 'Medium';
     }
 
@@ -236,56 +232,11 @@ const App = () => {
     };
   };
 
-  /**
-   * Handle click on "Play Simulation".
-   * We combine:
-   *  - Live Jira signal: number of currently open issues (To Do / In Progress)
-   *  - Emergent system factors from sliders (complexity + randomness)
-   *  - Team Cognitive Load as a multiplicative amplifier on the baseline risk
-   *
-   * This gives you a simple, data-driven "future simulator" for delay risk.
-   */
-  const handlePlaySimulation = () => {
-    // If a simulation is already running, ignore extra clicks.
-    if (status === 'running') {
-      return;
-    }
-
-    // --- 1. Baseline risk from live Jira data (open issues) ---
-    // Each open issue (To Do / In Progress) adds 5 percentage points of baseline risk.
-    let baselineRisk = openIssueCount * 5;
-
-    // If there are many open issues, we add a 10% uplift to represent queueing
-    // and coordination overhead growing non-linearly.
-    if (openIssueCount > 5) {
-      baselineRisk = baselineRisk * 1.1;
-    }
-
-    // --- 1b. Overdue tasks amplify baseline risk ---
-    // Each overdue task increases baseline risk by 15% to reflect the compounding
-    // effect of missed deadlines on emergent workflow delays.
-    baselineRisk = baselineRisk * (1 + overdueCount * 0.15);
-
-    // --- 2. Emergent system contribution from complexity + randomness ---
-    const emergentComponent = systemComplexity * 0.4 + Math.random() * 20;
-
-    // --- 3. Team cognitive load as a multiplicative amplifier ---
-    // We scale the baseline risk into [0, 1] using the cognitive load slider.
-    const cognitiveFactor = teamCognitiveLoad / 100;
-    let probability = baselineRisk * cognitiveFactor + emergentComponent;
-
-    // Clamp to a sensible [0, 100] range.
-    probability = Math.max(0, Math.min(100, Math.round(probability)));
-
-    // Store the calculated probability so we can show it after the "run".
-    setDelayProbability(probability);
-    setStatus('running');
-
-    // Simulate some processing delay (e.g. remote AI call or analysis).
-    setTimeout(() => {
-      setStatus('complete');
-    }, 2500);
-  };
+  // Dynamic probability of project risk based purely on current slider values.
+  const probability = Math.min(
+    99,
+    Math.round(((teamCognitiveLoad + systemComplexity) / 200) * 100)
+  );
 
   // If we don't yet have a valid product context (for example, while Forge is
   // still initialising the bridge between Jira and the app), render a light
@@ -456,32 +407,32 @@ const App = () => {
             </Text>
 
             <Text>
-              Simulation complete. Probability of delay:{' '}
-              {delayProbability != null ? `${delayProbability}%` : 'N/A'}.
+              Simulation complete. Estimated Project Risk: {probability}%.
             </Text>
 
             {/* Strategic guidance based on the emergent risk profile */}
-            {delayProbability != null && (
-              <SectionMessage
-                title="Strategic workflow advice"
-                appearance={delayProbability >= 70 ? 'error' : delayProbability >= 50 ? 'warning' : 'information'}
-              >
-                <Text>{getStrategicAdvice(delayProbability)}</Text>
-              </SectionMessage>
-            )}
+            <SectionMessage
+              title="Strategic workflow advice"
+              appearance={
+                probability >= 70
+                  ? 'error'
+                  : probability >= 50
+                  ? 'warning'
+                  : 'information'
+              }
+            >
+              <Text>{getStrategicAdvice(probability)}</Text>
+            </SectionMessage>
           </Stack>
         </Box>
       )}
 
-      {/* Optional helper text for the idle state */}
-      {status === 'idle' && (
-        <Box paddingBlock="space.200">
-          <Text>
-            Press &quot;Play Simulation&quot; to run an emergent workflow scenario analysis for this
-            project.
-          </Text>
-        </Box>
-      )}
+      {/* Helper text reflecting real-time simulation behavior */}
+      <Box paddingBlock="space.200">
+        <Text>
+          Adjust the sliders above to see real-time impact on projected delivery dates.
+        </Text>
+      </Box>
     </Box>
   );
 };
