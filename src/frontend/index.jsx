@@ -253,13 +253,18 @@ const App = () => {
       {/* Display fetched simulation tasks (temporary verification) */}
       {simulationTasks.length > 0 && (
         <Box paddingBlock="space.300">
-          <Heading size="medium">Simulation Tasks</Heading>
+          <Heading size="medium">Triton Simulation Data</Heading>
           <Stack space="space.200">
             {simulationTasks.map((task) => (
-              <Box key={task.key} padding="space.200" backgroundColor="color.background.neutral.subtle" borderRadius="border.radius.200">
+              <Box
+                key={task.key}
+                padding="space.200"
+                backgroundColor="color.background.neutral.subtle"
+                borderRadius="border.radius.200"
+              >
                 <Text>
-                  <strong>{task.key}</strong>: {task.summary}
-                  {task.assignee ? ` (Assigned to: ${task.assignee.displayName})` : ' (Unassigned)'}
+                  {task.key} ({task.status?.name || 'Unknown status'}): {task.summary} —{' '}
+                  {task.assignee ? task.assignee.displayName : 'Unassigned'}
                 </Text>
               </Box>
             ))}
