@@ -43,6 +43,7 @@ const App = () => {
   // Slider-controlled inputs that represent key drivers of emergent workflow risk.
   const [teamCognitiveLoad, setTeamCognitiveLoad] = useState(50);
   const [systemComplexity, setSystemComplexity] = useState(50);
+  const [absenceRisk, setAbsenceRisk] = useState(10);
   // Metrics derived from live Jira data for the current project.
   const [totalIssueCount, setTotalIssueCount] = useState(0);
   const [openIssueCount, setOpenIssueCount] = useState(0);
@@ -194,26 +195,44 @@ const App = () => {
   };
 
   /**
-   * Calculate a simple "What-if" simulation for a single task based on the
-   * current slider values for team cognitive load and system complexity.
+   * Calculate a "What-if" simulation for a single task based on the
+   * current slider values for team cognitive load, system complexity, and absence risk.
    *
-   * New math (less sensitive in the safe zone, steeper in high-risk zones):
-   * - RiskScore = (load * 1.5) + complexity
-   * - Threshold = 80 (no delay until the combined score exceeds this)
-   * - DelayDays = max(0, ceil((RiskScore - Threshold) / 4))
+   * Math breakdown:
+   * - Cognitive Load: treated as Velocity Drag. velocityModifier = 1 + (load / 100)
+   * - System Complexity: treated as Integration Overhead. complexityDays = ceil((complexity / 100) * 5)
+   * - Absence Risk (Stochastic): Random chance of worker sickness causing a 3-day block
+   * - SimulatedDays = (RemainingDays * velocityModifier) + complexityDays + sicknessDays
    */
-  const calculateSimulation = (task, load, complexity) => {
-    const riskScore = load * 1.5 + complexity;
-    const threshold = 80;
-    const delayRaw = (riskScore - threshold) / 4;
-    const delayDays = delayRaw > 0 ? Math.ceil(delayRaw) : 0;
+  const calculateSimulation = (task, load, complexity, absenceRisk) => {
+    // Cognitive Load: treated as Velocity Drag
+    const velocityModifier = 1 + (load / 100);
+    
+    // System Complexity: treated as Integration Overhead
+    const complexityDays = Math.ceil((complexity / 100) * 5);
+    
+    // Absence Risk (Stochastic): Random chance of worker sickness
+    const isWorkerSick = Math.random() * 100 < absenceRisk;
+    const sicknessDays = isWorkerSick ? 3 : 0;
 
     // Use task due date if available, otherwise treat today as the baseline.
     const baseDate = task.duedate ? new Date(task.duedate) : new Date();
     baseDate.setHours(0, 0, 0, 0);
+    
+    // Calculate days between Today and Original Due Date
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const remainingDays = Math.max(0, Math.ceil((baseDate - today) / (1000 * 60 * 60 * 24)));
 
-    const simulatedDate = new Date(baseDate);
-    simulatedDate.setDate(simulatedDate.getDate() + delayDays);
+    // Apply the formula: SimulatedDays = (RemainingDays * velocityModifier) + complexityDays + sicknessDays
+    const simulatedDays = (remainingDays * velocityModifier) + complexityDays + sicknessDays;
+    
+    // Calculate the simulated date
+    const simulatedDateObj = new Date(today);
+    simulatedDateObj.setDate(simulatedDateObj.getDate() + Math.ceil(simulatedDays));
+    
+    // Calculate delay days (difference between simulated date and original due date)
+    const delayDays = Math.max(0, Math.ceil((simulatedDateObj - baseDate) / (1000 * 60 * 60 * 24)));
 
     const formatDate = (date) => date.toISOString().slice(0, 10); // YYYY-MM-DD
 
@@ -225,9 +244,9 @@ const App = () => {
     }
 
     return {
+      simulatedDate: formatDate(simulatedDateObj),
       delayDays,
-      originalDate: formatDate(baseDate),
-      simulatedDate: formatDate(simulatedDate),
+      isSick: isWorkerSick,
       riskLevel,
     };
   };
@@ -286,17 +305,18 @@ const App = () => {
                 borderRadius="border.radius.200"
               >
                 {(() => {
-                  const sim = calculateSimulation(task, teamCognitiveLoad, systemComplexity);
+                  const sim = calculateSimulation(task, teamCognitiveLoad, systemComplexity, absenceRisk);
+                  const originalDate = task.duedate ? new Date(task.duedate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
                   return (
                     <Stack space="space.050">
                       <Text>
                         {task.key} ({task.status?.name || 'Unknown status'}): {task.summary}
                       </Text>
                       <Text>
-                        📅 Original: {sim.originalDate} → 🔮 Simulated: {sim.simulatedDate}{' '}
+                        📅 Original: {originalDate} → 🔮 Simulated: {sim.simulatedDate}{' '}
                         {sim.delayDays > 0
-                          ? `( +${sim.delayDays} days, ${sim.riskLevel} risk )`
-                          : '( On track )'}
+                          ? `( +${sim.delayDays} days, ${sim.riskLevel} risk${sim.isSick ? ' 🤒 Sick Leave' : ''} )`
+                          : `( On track${sim.isSick ? ' 🤒 Sick Leave' : ''} )`}
                       </Text>
                       <Text>
                         Assignee:{' '}
@@ -338,9 +358,8 @@ const App = () => {
                 setTeamCognitiveLoad(value);
               }}
             />
-            <Text>
-              Represents the mental juggling cost for the team: context switching, WIP, and
-              coordination overhead.
+            <Text fontSize="small">
+              Impact: Reduces team velocity due to context switching overhead.
             </Text>
           </Box>
 
@@ -355,9 +374,24 @@ const App = () => {
                 setSystemComplexity(value);
               }}
             />
-            <Text>
-              Captures integration surfaces, dependency depth, and coupling patterns in your
-              delivery system.
+            <Text fontSize="small">
+              Impact: Adds fixed integration wait times due to dependencies.
+            </Text>
+          </Box>
+
+          <Box>
+            <Heading size="small">Unexpected Absence Risk ({absenceRisk}%)</Heading>
+            <Range
+              min={0}
+              max={100}
+              step={1}
+              value={absenceRisk}
+              onChange={(value) => {
+                setAbsenceRisk(value);
+              }}
+            />
+            <Text fontSize="small">
+              Impact: % Chance of a random event (e.g. sickness) causing a 3-day block.
             </Text>
           </Box>
         </Stack>
