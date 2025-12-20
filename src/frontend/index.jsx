@@ -171,6 +171,38 @@ const App = () => {
   }, [platformContext]);
 
   /**
+   * Helper function to interpret Team Cognitive Load value (0-100) into a user-friendly description.
+   * Returns a string with emoji and descriptive text based on the load level.
+   */
+  const getLoadDescription = (value) => {
+    if (value >= 0 && value <= 20) {
+      return '🟢 Flow State (Single Focus)';
+    } else if (value >= 21 && value <= 50) {
+      return '🔵 Normal (Standard Overhead)';
+    } else if (value >= 51 && value <= 75) {
+      return '🟠 High (Frequent Context Switching)';
+    } else {
+      return '🔴 Overloaded (Thrashing/Firefighting)';
+    }
+  };
+
+  /**
+   * Helper function to interpret System Complexity value (0-100) into a user-friendly description.
+   * Returns a string with emoji and descriptive text based on the complexity level.
+   */
+  const getComplexityDescription = (value) => {
+    if (value >= 0 && value <= 20) {
+      return '🟢 Monolith / Simple';
+    } else if (value >= 21 && value <= 50) {
+      return '🔵 Modular (Standard Integrations)';
+    } else if (value >= 51 && value <= 75) {
+      return '🟠 Distributed (Microservices)';
+    } else {
+      return '🔴 Spaghetti (Deep Dependency Chains)';
+    }
+  };
+
+  /**
    * Given a probability percentage, return a short strategic recommendation
    * that helps the team respond to the emergent risk profile.
    */
@@ -277,9 +309,6 @@ const App = () => {
 
   return (
     <Box padding="space.400">
-      {/* Main title matching the thesis concept */}
-      <Heading size="large">AI World Model: Future Simulator</Heading>
-
       {/* Permission error message - show prominently if we got a 403 */}
       {hasPermissionError && (
         <Box paddingBlock="space.300">
@@ -359,7 +388,10 @@ const App = () => {
               }}
             />
             <Text fontSize="small">
-              Impact: Reduces team velocity due to context switching overhead.
+              {getLoadDescription(teamCognitiveLoad)}
+            </Text>
+            <Text fontSize="small">
+              0 = Dedicated Focus. 100 = Constant interruptions. Adjust to match current team reality.
             </Text>
           </Box>
 
@@ -374,6 +406,9 @@ const App = () => {
                 setSystemComplexity(value);
               }}
             />
+            <Text fontSize="small">
+              {getComplexityDescription(systemComplexity)}
+            </Text>
             <Text fontSize="small">
               Impact: Adds fixed integration wait times due to dependencies.
             </Text>
