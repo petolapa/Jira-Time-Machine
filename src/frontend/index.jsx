@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ForgeReconciler, {
   Heading,
   Text,
+  Strong,
   Button,
   Box,
   Range,
@@ -171,6 +172,40 @@ const App = () => {
   }, [platformContext]);
 
   /**
+   * Helper function to interpret Team Cognitive Load value (0-100) into a user-friendly label.
+   * Returns a string with emoji and descriptive text based on the load level.
+   * Used in slider headers for dynamic display.
+   */
+  const getLoadLabel = (value) => {
+    if (value >= 0 && value <= 20) {
+      return '🟢 Flow State (Single Focus)';
+    } else if (value >= 21 && value <= 50) {
+      return '🔵 Optimal (Sustainable Pace)';
+    } else if (value >= 51 && value <= 80) {
+      return '🟠 High Load (Context Switching)';
+    } else {
+      return '🔴 Cognitive Overload (Thrashing)';
+    }
+  };
+
+  /**
+   * Helper function to interpret System Complexity value (0-100) into a user-friendly label.
+   * Returns a string with emoji and descriptive text based on the complexity level.
+   * Used in slider headers for dynamic display.
+   */
+  const getComplexityLabel = (value) => {
+    if (value >= 0 && value <= 30) {
+      return '🟢 Monolith / Low Dependencies';
+    } else if (value >= 31 && value <= 60) {
+      return '🔵 Modular / Standard';
+    } else if (value >= 61 && value <= 85) {
+      return '🟠 Distributed / High Friction';
+    } else {
+      return '🔴 Spaghetti / Entangled';
+    }
+  };
+
+  /**
    * Helper function to interpret Team Cognitive Load value (0-100) into a user-friendly description.
    * Returns a string with emoji and descriptive text based on the load level.
    */
@@ -205,21 +240,22 @@ const App = () => {
   /**
    * Given a probability percentage, return a short strategic recommendation
    * that helps the team respond to the emergent risk profile.
+   * Thresholds adjusted for new average-based formula (lower values expected).
    */
   const getStrategicAdvice = (probability) => {
     if (probability == null) {
       return null;
     }
 
-    if (probability >= 70) {
+    if (probability > 60) {
       return 'Critical emergent risk detected. Immediate scope reduction and cross-team swarming recommended.';
     }
 
-    if (probability >= 50) {
+    if (probability > 40) {
       return 'High delay probability. Immediate scope reduction recommended and rebalancing of WIP limits.';
     }
 
-    if (probability >= 30) {
+    if (probability > 20) {
       return 'Moderate risk. Consider simplifying system interactions and protecting focus time for the team.';
     }
 
@@ -235,6 +271,8 @@ const App = () => {
    * - System Complexity: treated as Integration Overhead. complexityDays = ceil((complexity / 100) * 5)
    * - Absence Risk (Stochastic): Random chance of worker sickness causing a 3-day block
    * - SimulatedDays = (RemainingDays * velocityModifier) + complexityDays + sicknessDays
+   *
+   * Fix: If task is overdue, use today as baseline to ensure simulated date is always in the future.
    */
   const calculateSimulation = (task, load, complexity, absenceRisk) => {
     // Cognitive Load: treated as Velocity Drag
@@ -247,47 +285,63 @@ const App = () => {
     const isWorkerSick = Math.random() * 100 < absenceRisk;
     const sicknessDays = isWorkerSick ? 3 : 0;
 
-    // Use task due date if available, otherwise treat today as the baseline.
-    const baseDate = task.duedate ? new Date(task.duedate) : new Date();
-    baseDate.setHours(0, 0, 0, 0);
-    
-    // Calculate days between Today and Original Due Date
+    // Determine baseline date: if task is overdue, use today; otherwise use the due date
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const remainingDays = Math.max(0, Math.ceil((baseDate - today) / (1000 * 60 * 60 * 24)));
+    
+    const originalDueDate = task.duedate ? new Date(task.duedate) : null;
+    if (originalDueDate) {
+      originalDueDate.setHours(0, 0, 0, 0);
+    }
+    
+    // Check if task is overdue (due date is in the past)
+    const isOverdue = originalDueDate && originalDueDate < today;
+    
+    // Set baseline: use today if overdue, otherwise use original due date (or today if no due date)
+    const baselineDate = isOverdue ? today : (originalDueDate || today);
+    
+    // Calculate remaining days from baseline to original due date (for velocity calculation)
+    const remainingDays = originalDueDate 
+      ? Math.max(0, Math.ceil((originalDueDate - baselineDate) / (1000 * 60 * 60 * 24)))
+      : 0;
 
     // Apply the formula: SimulatedDays = (RemainingDays * velocityModifier) + complexityDays + sicknessDays
     const simulatedDays = (remainingDays * velocityModifier) + complexityDays + sicknessDays;
     
-    // Calculate the simulated date
-    const simulatedDateObj = new Date(today);
+    // Calculate the simulated date by adding simulated days to baseline
+    const simulatedDateObj = new Date(baselineDate);
     simulatedDateObj.setDate(simulatedDateObj.getDate() + Math.ceil(simulatedDays));
     
+    // Calculate risk days (total additional days beyond baseline)
+    const riskDays = Math.ceil(simulatedDays - remainingDays);
+    
     // Calculate delay days (difference between simulated date and original due date)
-    const delayDays = Math.max(0, Math.ceil((simulatedDateObj - baseDate) / (1000 * 60 * 60 * 24)));
+    const delayDays = originalDueDate 
+      ? Math.max(0, Math.ceil((simulatedDateObj - originalDueDate) / (1000 * 60 * 60 * 24)))
+      : riskDays;
 
     const formatDate = (date) => date.toISOString().slice(0, 10); // YYYY-MM-DD
 
     let riskLevel = 'Low';
-    if (delayDays >= 15) {
+    if (riskDays >= 15) {
       riskLevel = 'High';
-    } else if (delayDays >= 5) {
+    } else if (riskDays >= 5) {
       riskLevel = 'Medium';
     }
 
     return {
       simulatedDate: formatDate(simulatedDateObj),
       delayDays,
+      riskDays,
       isSick: isWorkerSick,
       riskLevel,
+      isOverdue,
+      originalDate: originalDueDate ? formatDate(originalDueDate) : null,
     };
   };
 
-  // Dynamic probability of project risk based purely on current slider values.
-  const probability = Math.min(
-    99,
-    Math.round(((teamCognitiveLoad + systemComplexity) / 200) * 100)
-  );
+  // Dynamic probability of schedule volatility based on equal weight average of all three friction factors.
+  const probability = Math.round((teamCognitiveLoad + systemComplexity + absenceRisk) / 3);
 
   // If we don't yet have a valid product context (for example, while Forge is
   // still initialising the bridge between Jira and the app), render a light
@@ -335,17 +389,16 @@ const App = () => {
               >
                 {(() => {
                   const sim = calculateSimulation(task, teamCognitiveLoad, systemComplexity, absenceRisk);
-                  const originalDate = task.duedate ? new Date(task.duedate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+                  const originalDate = sim.originalDate || (task.duedate ? new Date(task.duedate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
                   return (
                     <Stack space="space.050">
                       <Text>
                         {task.key} ({task.status?.name || 'Unknown status'}): {task.summary}
                       </Text>
                       <Text>
-                        📅 Original: {originalDate} → 🔮 Simulated: {sim.simulatedDate}{' '}
-                        {sim.delayDays > 0
-                          ? `( +${sim.delayDays} days, ${sim.riskLevel} risk${sim.isSick ? ' 🤒 Sick Leave' : ''} )`
-                          : `( On track${sim.isSick ? ' 🤒 Sick Leave' : ''} )`}
+                        {sim.isOverdue
+                          ? `📅 Original: ${originalDate} → 🔮 New ETA: ${sim.simulatedDate} (⚠️ Overdue correction + ${sim.riskDays} days risk${sim.isSick ? ' 🤒 Sick Leave' : ''})`
+                          : `📅 Original: ${originalDate} → 🔮 Simulated: ${sim.simulatedDate} ( +${sim.riskDays} days risk${sim.isSick ? ' 🤒 Sick Leave' : ''} )`}
                       </Text>
                       <Text>
                         Assignee:{' '}
@@ -376,7 +429,10 @@ const App = () => {
       <Box paddingBlock="space.300">
         <Stack space="space.300">
           <Box>
-            <Heading size="small">Team Cognitive Load ({teamCognitiveLoad})</Heading>
+            <Heading size="small">
+              Team Cognitive Load ({teamCognitiveLoad}){' '}
+              <Strong>{getLoadLabel(teamCognitiveLoad)}</Strong>
+            </Heading>
             <Range
               min={0}
               max={100}
@@ -396,7 +452,10 @@ const App = () => {
           </Box>
 
           <Box>
-            <Heading size="small">System Complexity ({systemComplexity})</Heading>
+            <Heading size="small">
+              System Complexity ({systemComplexity}){' '}
+              <Strong>{getComplexityLabel(systemComplexity)}</Strong>
+            </Heading>
             <Range
               min={0}
               max={100}
@@ -476,18 +535,20 @@ const App = () => {
             </Text>
 
             <Text>
-              Simulation complete. Estimated Project Risk: {probability}%.
+              Simulation complete. Estimated Schedule Volatility: {probability}% (Risk of Emergent Delays)
             </Text>
 
             {/* Strategic guidance based on the emergent risk profile */}
             <SectionMessage
               title="Strategic workflow advice"
               appearance={
-                probability >= 70
+                probability > 60
                   ? 'error'
-                  : probability >= 50
+                  : probability > 40
                   ? 'warning'
-                  : 'information'
+                  : probability > 20
+                  ? 'information'
+                  : 'success'
               }
             >
               <Text>{getStrategicAdvice(probability)}</Text>
@@ -501,6 +562,17 @@ const App = () => {
         <Text>
           Adjust the sliders above to see real-time impact on projected delivery dates.
         </Text>
+      </Box>
+
+      {/* Transparency footer explaining simulation model logic */}
+      <Box paddingBlock="space.400">
+        <SectionMessage appearance="change" title="Simulation Model Logic">
+          <Stack space="space.050">
+            <Text>• Cognitive Load models velocity loss (Context Switching theory).</Text>
+            <Text>• System Complexity adds integration latency (Coupling theory).</Text>
+            <Text>• Absence Risk applies Monte Carlo probability for resource shocks.</Text>
+          </Stack>
+        </SectionMessage>
       </Box>
     </Box>
   );
