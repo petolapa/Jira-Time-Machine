@@ -10,6 +10,7 @@ import ForgeReconciler, {
   Stack,
   Tooltip,
   Icon,
+  Inline,
   useProductContext,
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
@@ -431,13 +432,15 @@ const App = () => {
       <Box paddingBlock="space.300">
         <Stack space="space.400">
           <Box>
-            <Tooltip content="Models velocity loss due to context switching overhead.">
-              <Heading size="small">
-                Team Cognitive Load ({teamCognitiveLoad}){' '}
-                <Strong>{getLoadLabel(teamCognitiveLoad)}</Strong>{' '}
-                <Icon glyph="info" label="Information" />
-              </Heading>
-            </Tooltip>
+            <Inline space="space.100" alignBlock="center">
+              <Heading size="small">Team Cognitive Load ({teamCognitiveLoad})</Heading>
+              <Tooltip content="Models velocity loss due to context switching overhead." position="top" shouldWrapChildren>
+                <Box>
+                  <Icon glyph="info" label="Information" />
+                </Box>
+              </Tooltip>
+              <Text weight="medium">{getLoadLabel(teamCognitiveLoad)}</Text>
+            </Inline>
             <Box paddingBlockStart="space.200">
               <Range
                 min={0}
@@ -453,13 +456,15 @@ const App = () => {
           </Box>
 
           <Box>
-            <Tooltip content="Adds fixed integration wait times due to dependency depth.">
-              <Heading size="small">
-                System Complexity ({systemComplexity}){' '}
-                <Strong>{getComplexityLabel(systemComplexity)}</Strong>{' '}
-                <Icon glyph="info" label="Information" />
-              </Heading>
-            </Tooltip>
+            <Inline space="space.100" alignBlock="center">
+              <Heading size="small">System Complexity ({systemComplexity})</Heading>
+              <Tooltip content="Adds fixed integration wait times due to dependency depth." position="top" shouldWrapChildren>
+                <Box>
+                  <Icon glyph="info" label="Information" />
+                </Box>
+              </Tooltip>
+              <Text weight="medium">{getComplexityLabel(systemComplexity)}</Text>
+            </Inline>
             <Box paddingBlockStart="space.200">
               <Range
                 min={0}
@@ -474,12 +479,14 @@ const App = () => {
           </Box>
 
           <Box>
-            <Tooltip content="Probability of a stochastic event (like sickness) causing a 3-day delay.">
-              <Heading size="small">
-                Unexpected Absence Risk ({absenceRisk}%){' '}
-                <Icon glyph="info" label="Information" />
-              </Heading>
-            </Tooltip>
+            <Inline space="space.100" alignBlock="center">
+              <Heading size="small">Unexpected Absence Risk ({absenceRisk}%)</Heading>
+              <Tooltip content="Probability of a stochastic event (like sickness) causing a 3-day delay." position="top" shouldWrapChildren>
+                <Box>
+                  <Icon glyph="info" label="Information" />
+                </Box>
+              </Tooltip>
+            </Inline>
             <Box paddingBlockStart="space.200">
               <Range
                 min={0}
