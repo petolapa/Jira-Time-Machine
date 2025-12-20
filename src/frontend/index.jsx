@@ -365,10 +365,10 @@ const App = () => {
   }
 
   return (
-    <Box padding="space.400">
+    <Box padding="space.200">
       {/* Permission error message - show prominently if we got a 403 */}
       {hasPermissionError && (
-        <Box paddingBlock="space.300">
+        <Box paddingBlock="space.100">
           <SectionMessage appearance="error" title="Permission denied">
             <Text>
               Permission denied. Please try to refresh the page or re-install the app to trigger
@@ -380,13 +380,13 @@ const App = () => {
 
       {/* Display fetched simulation tasks (temporary verification) */}
       {simulationTasks.length > 0 && (
-        <Box paddingBlock="space.300">
+        <Box paddingBlock="space.100">
           <Heading size="medium">Triton Simulation Data</Heading>
-          <Stack space="space.200">
+          <Stack space="space.100">
             {simulationTasks.map((task) => (
               <Box
                 key={task.key}
-                padding="space.200"
+                padding="space.150"
                 backgroundColor="color.background.neutral.subtle"
                 borderRadius="border.radius.200"
               >
@@ -394,20 +394,18 @@ const App = () => {
                   const sim = calculateSimulation(task, teamCognitiveLoad, systemComplexity, absenceRisk);
                   const originalDate = sim.originalDate || (task.duedate ? new Date(task.duedate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
                   return (
-                    <Stack space="space.050">
-                      <Text>
-                        {task.key} ({task.status?.name || 'Unknown status'}): {task.summary}
-                      </Text>
+                    <Inline space="space.150" alignBlock="center">
+                      <Text weight="medium">{task.key}</Text>
+                      <Text>{task.summary}</Text>
                       <Text>
                         {sim.isOverdue
-                          ? `📅 Original: ${originalDate} → 🔮 New ETA: ${sim.simulatedDate} (⚠️ Overdue correction + ${sim.riskDays} days risk${sim.isSick ? ' 🤒 Sick Leave' : ''})`
-                          : `📅 Original: ${originalDate} → 🔮 Simulated: ${sim.simulatedDate} ( +${sim.riskDays} days risk${sim.isSick ? ' 🤒 Sick Leave' : ''} )`}
+                          ? `📅 ${originalDate} → 🔮 ${sim.simulatedDate} (⚠️ +${sim.riskDays}d${sim.isSick ? ' 🤒' : ''})`
+                          : `📅 ${originalDate} → 🔮 ${sim.simulatedDate} (+${sim.riskDays}d${sim.isSick ? ' 🤒' : ''})`}
                       </Text>
-                      <Text>
-                        Assignee:{' '}
+                      <Text fontSize="small" color="color.text.subtle">
                         {task.assignee ? task.assignee.displayName : 'Unassigned'}
                       </Text>
-                    </Stack>
+                    </Inline>
                   );
                 })()}
               </Box>
@@ -418,7 +416,7 @@ const App = () => {
 
       {/* Visual feedback if no data received from backend */}
       {hasFetchedSimulationData && !hasPermissionError && simulationTasks.length === 0 && (
-        <Box paddingBlock="space.300">
+        <Box paddingBlock="space.100">
           <SectionMessage appearance="warning" title="No data received from backend">
             <Text>
               No data received from backend. Check terminal logs for backend debug output.
@@ -429,56 +427,58 @@ const App = () => {
       )}
 
       {/* Emergent workflow input sliders */}
-      <Box paddingBlock="space.300">
-        <Stack space="space.400">
-          <Box>
-            <Inline space="space.100" alignBlock="center">
-              <Heading size="small">Team Cognitive Load ({teamCognitiveLoad})</Heading>
-              <Tooltip content="Models velocity loss due to context switching overhead." position="top" shouldWrapChildren>
-                <Box>
-                  <Icon glyph="info" label="Information" />
-                </Box>
-              </Tooltip>
-              <Text weight="medium">{getLoadLabel(teamCognitiveLoad)}</Text>
-            </Inline>
-            <Box paddingBlockStart="space.200">
-              <Range
-                min={0}
-                max={100}
-                step={1}
-                value={teamCognitiveLoad}
-                onChange={(value) => {
-                  // UI Kit Range passes the numeric value directly.
-                  setTeamCognitiveLoad(value);
-                }}
-              />
+      <Box paddingBlock="space.150">
+        <Stack space="space.200">
+          <Inline space="space.200" alignBlock="start">
+            <Box style={{ width: '48%' }}>
+              <Inline space="space.100" alignBlock="center">
+                <Heading size="small">Team Cognitive Load ({teamCognitiveLoad})</Heading>
+                <Tooltip content="Models velocity loss due to context switching overhead." position="top" shouldWrapChildren>
+                  <Box>
+                    <Icon glyph="info" label="Information" />
+                  </Box>
+                </Tooltip>
+                <Text weight="medium">{getLoadLabel(teamCognitiveLoad)}</Text>
+              </Inline>
+              <Box paddingBlockStart="space.150">
+                <Range
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={teamCognitiveLoad}
+                  onChange={(value) => {
+                    // UI Kit Range passes the numeric value directly.
+                    setTeamCognitiveLoad(value);
+                  }}
+                />
+              </Box>
             </Box>
-          </Box>
 
-          <Box>
-            <Inline space="space.100" alignBlock="center">
-              <Heading size="small">System Complexity ({systemComplexity})</Heading>
-              <Tooltip content="Adds fixed integration wait times due to dependency depth." position="top" shouldWrapChildren>
-                <Box>
-                  <Icon glyph="info" label="Information" />
-                </Box>
-              </Tooltip>
-              <Text weight="medium">{getComplexityLabel(systemComplexity)}</Text>
-            </Inline>
-            <Box paddingBlockStart="space.200">
-              <Range
-                min={0}
-                max={100}
-                step={1}
-                value={systemComplexity}
-                onChange={(value) => {
-                  setSystemComplexity(value);
-                }}
-              />
+            <Box style={{ width: '48%' }}>
+              <Inline space="space.100" alignBlock="center">
+                <Heading size="small">System Complexity ({systemComplexity})</Heading>
+                <Tooltip content="Adds fixed integration wait times due to dependency depth." position="top" shouldWrapChildren>
+                  <Box>
+                    <Icon glyph="info" label="Information" />
+                  </Box>
+                </Tooltip>
+                <Text weight="medium">{getComplexityLabel(systemComplexity)}</Text>
+              </Inline>
+              <Box paddingBlockStart="space.150">
+                <Range
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={systemComplexity}
+                  onChange={(value) => {
+                    setSystemComplexity(value);
+                  }}
+                />
+              </Box>
             </Box>
-          </Box>
+          </Inline>
 
-          <Box>
+          <Box style={{ width: '48%' }}>
             <Inline space="space.100" alignBlock="center">
               <Heading size="small">Unexpected Absence Risk ({absenceRisk}%)</Heading>
               <Tooltip content="Probability of a stochastic event (like sickness) causing a 3-day delay." position="top" shouldWrapChildren>
@@ -487,7 +487,7 @@ const App = () => {
                 </Box>
               </Tooltip>
             </Inline>
-            <Box paddingBlockStart="space.200">
+            <Box paddingBlockStart="space.150">
               <Range
                 min={0}
                 max={100}
@@ -503,7 +503,7 @@ const App = () => {
       </Box>
 
       {/* Main action area */}
-      <Box paddingBlock="space.400">
+      <Box paddingBlock="space.100">
         <Button
           appearance="primary" // Primary buttons are blue in Jira/Atlassian products.
           shouldFitContainer
@@ -538,8 +538,8 @@ const App = () => {
 
       {/* Footer summary and strategic advice driven by live simulation data */}
       {simulationTasks.length > 0 && (
-        <Box paddingBlock="space.400">
-          <Stack space="space.200">
+        <Box paddingBlock="space.150">
+          <Stack space="space.100">
             {/* Display analyzed issue metrics based on the number of tasks fetched */}
             <Text>
               Analyzed {simulationTasks.length} active issues.
@@ -569,14 +569,14 @@ const App = () => {
       )}
 
       {/* Helper text reflecting real-time simulation behavior */}
-      <Box paddingBlock="space.200">
+      <Box paddingBlock="space.100">
         <Text>
           Adjust the sliders above to see real-time impact on projected delivery dates.
         </Text>
       </Box>
 
       {/* Transparency footer explaining simulation model logic */}
-      <Box paddingBlock="space.400">
+      <Box paddingBlock="space.150">
         <SectionMessage appearance="change" title="Simulation Model Logic">
           <Stack space="space.050">
             <Text>• Cognitive Load models velocity loss (Context Switching theory).</Text>
