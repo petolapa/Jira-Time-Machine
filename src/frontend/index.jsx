@@ -8,6 +8,8 @@ import ForgeReconciler, {
   Range,
   SectionMessage,
   Stack,
+  Tooltip,
+  Icon,
   useProductContext,
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
@@ -427,66 +429,68 @@ const App = () => {
 
       {/* Emergent workflow input sliders */}
       <Box paddingBlock="space.300">
-        <Stack space="space.300">
+        <Stack space="space.400">
           <Box>
-            <Heading size="small">
-              Team Cognitive Load ({teamCognitiveLoad}){' '}
-              <Strong>{getLoadLabel(teamCognitiveLoad)}</Strong>
-            </Heading>
-            <Range
-              min={0}
-              max={100}
-              step={1}
-              value={teamCognitiveLoad}
-              onChange={(value) => {
-                // UI Kit Range passes the numeric value directly.
-                setTeamCognitiveLoad(value);
-              }}
-            />
-            <Text fontSize="small">
-              {getLoadDescription(teamCognitiveLoad)}
-            </Text>
-            <Text fontSize="small">
-              0 = Dedicated Focus. 100 = Constant interruptions. Adjust to match current team reality.
-            </Text>
+            <Tooltip content="Models velocity loss due to context switching overhead.">
+              <Heading size="small">
+                Team Cognitive Load ({teamCognitiveLoad}){' '}
+                <Strong>{getLoadLabel(teamCognitiveLoad)}</Strong>{' '}
+                <Icon glyph="info" label="Information" />
+              </Heading>
+            </Tooltip>
+            <Box paddingBlockStart="space.200">
+              <Range
+                min={0}
+                max={100}
+                step={1}
+                value={teamCognitiveLoad}
+                onChange={(value) => {
+                  // UI Kit Range passes the numeric value directly.
+                  setTeamCognitiveLoad(value);
+                }}
+              />
+            </Box>
           </Box>
 
           <Box>
-            <Heading size="small">
-              System Complexity ({systemComplexity}){' '}
-              <Strong>{getComplexityLabel(systemComplexity)}</Strong>
-            </Heading>
-            <Range
-              min={0}
-              max={100}
-              step={1}
-              value={systemComplexity}
-              onChange={(value) => {
-                setSystemComplexity(value);
-              }}
-            />
-            <Text fontSize="small">
-              {getComplexityDescription(systemComplexity)}
-            </Text>
-            <Text fontSize="small">
-              Impact: Adds fixed integration wait times due to dependencies.
-            </Text>
+            <Tooltip content="Adds fixed integration wait times due to dependency depth.">
+              <Heading size="small">
+                System Complexity ({systemComplexity}){' '}
+                <Strong>{getComplexityLabel(systemComplexity)}</Strong>{' '}
+                <Icon glyph="info" label="Information" />
+              </Heading>
+            </Tooltip>
+            <Box paddingBlockStart="space.200">
+              <Range
+                min={0}
+                max={100}
+                step={1}
+                value={systemComplexity}
+                onChange={(value) => {
+                  setSystemComplexity(value);
+                }}
+              />
+            </Box>
           </Box>
 
           <Box>
-            <Heading size="small">Unexpected Absence Risk ({absenceRisk}%)</Heading>
-            <Range
-              min={0}
-              max={100}
-              step={1}
-              value={absenceRisk}
-              onChange={(value) => {
-                setAbsenceRisk(value);
-              }}
-            />
-            <Text fontSize="small">
-              Impact: % Chance of a random event (e.g. sickness) causing a 3-day block.
-            </Text>
+            <Tooltip content="Probability of a stochastic event (like sickness) causing a 3-day delay.">
+              <Heading size="small">
+                Unexpected Absence Risk ({absenceRisk}%){' '}
+                <Icon glyph="info" label="Information" />
+              </Heading>
+            </Tooltip>
+            <Box paddingBlockStart="space.200">
+              <Range
+                min={0}
+                max={100}
+                step={1}
+                value={absenceRisk}
+                onChange={(value) => {
+                  setAbsenceRisk(value);
+                }}
+              />
+            </Box>
           </Box>
         </Stack>
       </Box>
