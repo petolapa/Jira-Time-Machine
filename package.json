@@ -5,11 +5,13 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "lint": "eslint src/**/*"
+    "lint": "eslint src/**/*",
+    "test": "jest"
   },
   "devDependencies": {
     "eslint": "^8.56.0",
-    "eslint-plugin-react-hooks": "^4.6.0"
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "jest": "^29.7.0"
   },
   "dependencies": {
     "@forge/api": "^3.9.2",

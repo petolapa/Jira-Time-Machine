@@ -1,7 +1,7 @@
-import Resolver from '@forge/resolver';
-import { route, asUser } from '@forge/api';
+const Resolver = require('@forge/resolver');
+const { route, asUser } = require('@forge/api');
 
-const resolver = new Resolver();
+const resolver = new Resolver.default ? new Resolver.default() : new Resolver();
 
 /**
  * Fetches simulation data for the Jira Time Machine app.
@@ -46,28 +46,31 @@ resolver.define('fetchSimulationData', async (req) => {
       }),
     });
     const data = await response.json();
-    
+
     // Debug logging: log the raw JSON response
-    console.log('[Backend] Raw Jira API response:', JSON.stringify(data, null, 2));
     console.log('[Backend] Response status:', response.status);
-    console.log('[Backend] data.issues exists?', Array.isArray(data.issues));
-    console.log('[Backend] data.issues length:', data.issues ? data.issues.length : 'N/A');
-    
+    if (data) {
+      console.log('[Backend] Raw Jira API response:', JSON.stringify(data, null, 2));
+      console.log('[Backend] data.issues exists?', Array.isArray(data.issues));
+      console.log('[Backend] data.issues length:', data.issues ? data.issues.length : 'N/A');
+    } else {
+      console.log('[Backend] Zero data received from Jira API');
+    }
+
     // Validation: check if data.issues exists
-    if (!data.issues) {
-      console.error('[Backend] Jira API returned no issues structure. Response keys:', Object.keys(data));
+    if (!data || !data.issues) {
+      console.error('[Backend] Jira API returned no issues structure. Response keys:', data ? Object.keys(data) : 'null');
       throw new Error('Jira API returned no issues structure');
     }
-    
+
     const issues = Array.isArray(data.issues) ? data.issues : [];
     console.log('[Backend] Processing', issues.length, 'issues');
-    console.log('Backend: Found issues:', data.issues.length);
-    
+
     // Transform to clean JSON array suitable for frontend
     const tasks = issues.map((issue) => {
       const issueFields = issue.fields || {};
       const assignee = issueFields.assignee;
-      
+
       return {
         key: issue.key,
         summary: issueFields.summary || '',
@@ -87,10 +90,10 @@ resolver.define('fetchSimulationData', async (req) => {
         } : null
       };
     });
-    
+
     console.log('[Backend] Fetched', tasks.length, 'tasks for simulation');
     console.log('[Backend] Task keys:', tasks.map(t => t.key).join(', '));
-    
+
     return tasks;
   } catch (error) {
     console.error('[Backend] Error fetching simulation data:', error);
@@ -109,4 +112,4 @@ resolver.define('getText', (req) => {
 const definitions = resolver.getDefinitions();
 console.log('[Backend] Resolver definitions registered:', Object.keys(definitions));
 
-export const handler = definitions;
+exports.handler = definitions;

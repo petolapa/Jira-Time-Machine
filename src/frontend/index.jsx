@@ -14,6 +14,7 @@ import ForgeReconciler, {
   useProductContext,
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
+import { calculateSimulation } from './simulationLogic';
 
 /**
  * Project Page UI for "AI World Model: Future Simulator".
@@ -64,6 +65,8 @@ const App = () => {
   const [simulationTasks, setSimulationTasks] = useState([]);
   // Track if we've attempted to fetch simulation data
   const [hasFetchedSimulationData, setHasFetchedSimulationData] = useState(false);
+  // Current status of the simulation: 'idle', 'running', or 'complete'
+  const [status, setStatus] = useState('idle');
 
   /**
    * Shared helper to (re)fetch simulation data for the current project.
@@ -102,6 +105,7 @@ const App = () => {
     console.log('Frontend: Using Project Key for simulation fetch:', projectKey);
 
     try {
+      setStatus('running');
       console.log(
         '[Frontend] Calling invoke("fetchSimulationData") with projectKey:',
         projectKey
@@ -120,6 +124,7 @@ const App = () => {
       setSimulationTasks(tasks);
       setHasFetchedSimulationData(true);
       setHasPermissionError(false);
+      setStatus('complete');
 
       console.log('[Frontend] Set simulationTasks to:', tasks);
       console.log('[Frontend] Task count:', tasks.length);
@@ -133,6 +138,7 @@ const App = () => {
 
       setSimulationTasks([]);
       setHasFetchedSimulationData(true);
+      setStatus('complete');
 
       const statusCode = error?.status || error?.response?.status;
       if (statusCode === 403) {
@@ -265,89 +271,8 @@ const App = () => {
     return 'Low projected delay risk. Maintain current workflow guardrails but monitor for local bottlenecks.';
   };
 
-  /**
-   * Calculate a "What-if" simulation for a single task based on the
-   * current slider values for team cognitive load, system complexity, and absence risk.
-   *
-   * Math breakdown:
-   * - Cognitive Load: treated as Velocity Drag. velocityModifier = 1 + (load / 100)
-   * - System Complexity: treated as Integration Overhead. complexityDays = ceil((complexity / 100) * 5)
-   * - Absence Risk (Stochastic): Random chance of worker sickness causing a 3-day block
-   * - SimulatedDays = (RemainingDays * velocityModifier) + complexityDays + sicknessDays
-   *
-   * Fix: If task is overdue, use today as baseline to ensure simulated date is always in the future.
-   */
-  const calculateSimulation = (task, load, complexity, absenceRisk) => {
-    // Cognitive Load: treated as Velocity Drag
-    const velocityModifier = 1 + (load / 100);
-    
-    // System Complexity: treated as Integration Overhead
-    const complexityDays = Math.ceil((complexity / 100) * 5);
-    
-    // Absence Risk (Stochastic): Random chance of worker sickness
-    const isWorkerSick = Math.random() * 100 < absenceRisk;
-    const sicknessDays = isWorkerSick ? 3 : 0;
-
-    // Determine baseline date: if task is overdue, use today; otherwise use the due date
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const originalDueDate = task.duedate ? new Date(task.duedate) : null;
-    if (originalDueDate) {
-      originalDueDate.setHours(0, 0, 0, 0);
-    }
-    
-    // Check if task is overdue (due date is in the past)
-    const isOverdue = originalDueDate && originalDueDate < today;
-    
-    // Set baseline: use today if overdue, otherwise use original due date (or today if no due date)
-    const baselineDate = isOverdue ? today : (originalDueDate || today);
-    
-    // Calculate remaining days from baseline to original due date (for velocity calculation)
-    const remainingDays = originalDueDate 
-      ? Math.max(0, Math.ceil((originalDueDate - baselineDate) / (1000 * 60 * 60 * 24)))
-      : 0;
-
-    // Apply the formula: SimulatedDays = (RemainingDays * velocityModifier) + complexityDays + sicknessDays
-    const simulatedDays = (remainingDays * velocityModifier) + complexityDays + sicknessDays;
-    
-    // Calculate the simulated date by adding simulated days to baseline
-    const simulatedDateObj = new Date(baselineDate);
-    simulatedDateObj.setDate(simulatedDateObj.getDate() + Math.ceil(simulatedDays));
-    
-    // Calculate risk days (total additional days beyond baseline)
-    const riskDays = Math.ceil(simulatedDays - remainingDays);
-    
-    // Calculate delay days (difference between simulated date and original due date)
-    const delayDays = originalDueDate 
-      ? Math.max(0, Math.ceil((simulatedDateObj - originalDueDate) / (1000 * 60 * 60 * 24)))
-      : riskDays;
-
-    const formatDate = (date) => date.toISOString().slice(0, 10); // YYYY-MM-DD
-
-    let riskLevel = 'Low';
-    if (riskDays >= 15) {
-      riskLevel = 'High';
-    } else if (riskDays >= 5) {
-      riskLevel = 'Medium';
-    }
-
-    return {
-      simulatedDate: formatDate(simulatedDateObj),
-      delayDays,
-      riskDays,
-      isSick: isWorkerSick,
-      riskLevel,
-      isOverdue,
-      originalDate: originalDueDate ? formatDate(originalDueDate) : null,
-    };
-  };
-
-  // Dynamic probability of schedule volatility based on equal weight average of all three friction factors.
   const probability = Math.round((teamCognitiveLoad + systemComplexity + absenceRisk) / 3);
 
-  // If we don't yet have a valid product context (for example, while Forge is
-  // still initialising the bridge between Jira and the app), render a light
   // placeholder instead of crashing.
   // Changed to check productContext directly to see if we're getting any context at all.
   if (!productContext) {
@@ -367,64 +292,70 @@ const App = () => {
   return (
     <Box padding="space.200">
       {/* Permission error message - show prominently if we got a 403 */}
-      {hasPermissionError && (
-        <Box paddingBlock="space.100">
-          <SectionMessage appearance="error" title="Permission denied">
-            <Text>
-              Permission denied. Please try to refresh the page or re-install the app to trigger
-              the access prompt.
-            </Text>
-          </SectionMessage>
-        </Box>
-      )}
+      {
+        hasPermissionError && (
+          <Box paddingBlock="space.100">
+            <SectionMessage appearance="error" title="Permission denied">
+              <Text>
+                Permission denied. Please try to refresh the page or re-install the app to trigger
+                the access prompt.
+              </Text>
+            </SectionMessage>
+          </Box>
+        )
+      }
 
       {/* Display fetched simulation tasks (temporary verification) */}
-      {simulationTasks.length > 0 && (
-        <Box paddingBlock="space.100">
-          <Heading size="medium">Triton Simulation Data</Heading>
-          <Stack space="space.100">
-            {simulationTasks.map((task) => (
-              <Box
-                key={task.key}
-                padding="space.150"
-                backgroundColor="color.background.neutral.subtle"
-                borderRadius="border.radius.200"
-              >
-                {(() => {
-                  const sim = calculateSimulation(task, teamCognitiveLoad, systemComplexity, absenceRisk);
-                  const originalDate = sim.originalDate || (task.duedate ? new Date(task.duedate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
-                  return (
-                    <Inline space="space.150" alignBlock="center">
-                      <Text weight="medium">{task.key}</Text>
-                      <Text>{task.summary}</Text>
-                      <Text>
-                        {sim.isOverdue
-                          ? `📅 ${originalDate} → 🔮 ${sim.simulatedDate} (⚠️ +${sim.riskDays}d${sim.isSick ? ' 🤒' : ''})`
-                          : `📅 ${originalDate} → 🔮 ${sim.simulatedDate} (+${sim.riskDays}d${sim.isSick ? ' 🤒' : ''})`}
-                      </Text>
-                      <Text fontSize="small" color="color.text.subtle">
-                        {task.assignee ? task.assignee.displayName : 'Unassigned'}
-                      </Text>
-                    </Inline>
-                  );
-                })()}
-              </Box>
-            ))}
-          </Stack>
-        </Box>
-      )}
+      {
+        simulationTasks.length > 0 && (
+          <Box paddingBlock="space.100">
+            <Heading size="medium">Triton Simulation Data</Heading>
+            <Stack space="space.100">
+              {simulationTasks.map((task) => (
+                <Box
+                  key={task.key}
+                  padding="space.150"
+                  backgroundColor="color.background.neutral.subtle"
+                  borderRadius="border.radius.200"
+                >
+                  {(() => {
+                    const sim = calculateSimulation(task, teamCognitiveLoad, systemComplexity, absenceRisk);
+                    const originalDate = sim.originalDate || (task.duedate ? new Date(task.duedate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
+                    return (
+                      <Inline space="space.150" alignBlock="center">
+                        <Text weight="medium">{task.key}</Text>
+                        <Text>{task.summary}</Text>
+                        <Text>
+                          {sim.isOverdue
+                            ? `📅 ${originalDate} → 🔮 ${sim.simulatedDate} (⚠️ +${sim.riskDays}d${sim.isSick ? ' 🤒' : ''})`
+                            : `📅 ${originalDate} → 🔮 ${sim.simulatedDate} (+${sim.riskDays}d${sim.isSick ? ' 🤒' : ''})`}
+                        </Text>
+                        <Text fontSize="small" color="color.text.subtle">
+                          {task.assignee ? task.assignee.displayName : 'Unassigned'}
+                        </Text>
+                      </Inline>
+                    );
+                  })()}
+                </Box>
+              ))}
+            </Stack>
+          </Box>
+        )
+      }
 
       {/* Visual feedback if no data received from backend */}
-      {hasFetchedSimulationData && !hasPermissionError && simulationTasks.length === 0 && (
-        <Box paddingBlock="space.100">
-          <SectionMessage appearance="warning" title="No data received from backend">
-            <Text>
-              No data received from backend. Check terminal logs for backend debug output.
-              Expected keys: KAN-1, KAN-2, KAN-3
-            </Text>
-          </SectionMessage>
-        </Box>
-      )}
+      {
+        hasFetchedSimulationData && !hasPermissionError && simulationTasks.length === 0 && (
+          <Box paddingBlock="space.100">
+            <SectionMessage appearance="warning" title="No data received from backend">
+              <Text>
+                No data received from backend. Check terminal logs for backend debug output.
+                Expected keys: KAN-1, KAN-2, KAN-3
+              </Text>
+            </SectionMessage>
+          </Box>
+        )
+      }
 
       {/* Emergent workflow input sliders */}
       <Box paddingBlock="space.150">
@@ -478,27 +409,29 @@ const App = () => {
             </Box>
           </Inline>
 
-          <Box style={{ width: '48%' }}>
-            <Inline space="space.100" alignBlock="center">
-              <Heading size="small">Unexpected Absence Risk ({absenceRisk}%)</Heading>
-              <Tooltip content="Probability of a stochastic event (like sickness) causing a 3-day delay." position="top" shouldWrapChildren>
-                <Box>
-                  <Icon glyph="info" label="Information" />
-                </Box>
-              </Tooltip>
-            </Inline>
-            <Box paddingBlockStart="space.150">
-              <Range
-                min={0}
-                max={100}
-                step={1}
-                value={absenceRisk}
-                onChange={(value) => {
-                  setAbsenceRisk(value);
-                }}
-              />
+          <Inline space="space.200" alignBlock="start">
+            <Box style={{ width: '48%' }}>
+              <Inline space="space.100" alignBlock="center">
+                <Heading size="small">Unexpected Absence Risk ({absenceRisk}%)</Heading>
+                <Tooltip content="Probability of a stochastic event (like sickness) causing a 3-day delay." position="top" shouldWrapChildren>
+                  <Box>
+                    <Icon glyph="info" label="Information" />
+                  </Box>
+                </Tooltip>
+              </Inline>
+              <Box paddingBlockStart="space.150">
+                <Range
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={absenceRisk}
+                  onChange={(value) => {
+                    setAbsenceRisk(value);
+                  }}
+                />
+              </Box>
             </Box>
-          </Box>
+          </Inline>
         </Stack>
       </Box>
 
@@ -514,59 +447,63 @@ const App = () => {
       </Box>
 
       {/* Loading bar / progress feedback while the simulation is "running" */}
-      {status === 'running' && (
-        <Box paddingBlock="space.300">
-          {/* This Box visually represents a simple loading bar. */}
-          <Box
-            padding="space.100"
-            backgroundColor="color.background.neutral.subtle"
-            borderRadius="border.radius.200"
-          >
+      {
+        status === 'running' && (
+          <Box paddingBlock="space.300">
+            {/* This Box visually represents a simple loading bar. */}
             <Box
-              paddingBlock="space.050"
-              backgroundColor="color.background.brand.bold"
+              padding="space.100"
+              backgroundColor="color.background.neutral.subtle"
               borderRadius="border.radius.200"
-              // The width here is fixed for simplicity; in a real app you could
-              // bind this to an actual numeric progress value in state.
-              style={{ width: '70%' }}
             >
-              <Text>Running simulation...</Text>
+              <Box
+                paddingBlock="space.050"
+                backgroundColor="color.background.brand.bold"
+                borderRadius="border.radius.200"
+                // The width here is fixed for simplicity; in a real app you could
+                // bind this to an actual numeric progress value in state.
+                style={{ width: '70%' }}
+              >
+                <Text>Running simulation...</Text>
+              </Box>
             </Box>
           </Box>
-        </Box>
-      )}
+        )
+      }
 
       {/* Footer summary and strategic advice driven by live simulation data */}
-      {simulationTasks.length > 0 && (
-        <Box paddingBlock="space.150">
-          <Stack space="space.100">
-            {/* Display analyzed issue metrics based on the number of tasks fetched */}
-            <Text>
-              Analyzed {simulationTasks.length} active issues.
-            </Text>
+      {
+        simulationTasks.length > 0 && (
+          <Box paddingBlock="space.150">
+            <Stack space="space.100">
+              {/* Display analyzed issue metrics based on the number of tasks fetched */}
+              <Text>
+                Analyzed {simulationTasks.length} active issues.
+              </Text>
 
-            <Text>
-              Simulation complete. Estimated Schedule Volatility: {probability}% (Risk of Emergent Delays)
-            </Text>
+              <Text>
+                Simulation complete. Estimated Schedule Volatility: {probability}% (Risk of Emergent Delays)
+              </Text>
 
-            {/* Strategic guidance based on the emergent risk profile */}
-            <SectionMessage
-              title="Strategic workflow advice"
-              appearance={
-                probability > 60
-                  ? 'error'
-                  : probability > 40
-                  ? 'warning'
-                  : probability > 20
-                  ? 'information'
-                  : 'success'
-              }
-            >
-              <Text>{getStrategicAdvice(probability)}</Text>
-            </SectionMessage>
-          </Stack>
-        </Box>
-      )}
+              {/* Strategic guidance based on the emergent risk profile */}
+              <SectionMessage
+                title="Strategic workflow advice"
+                appearance={
+                  probability > 60
+                    ? 'error'
+                    : probability > 40
+                      ? 'warning'
+                      : probability > 20
+                        ? 'information'
+                        : 'success'
+                }
+              >
+                <Text>{getStrategicAdvice(probability)}</Text>
+              </SectionMessage>
+            </Stack>
+          </Box>
+        )
+      }
 
       {/* Helper text reflecting real-time simulation behavior */}
       <Box paddingBlock="space.100">
