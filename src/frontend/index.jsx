@@ -122,6 +122,17 @@ const App = () => {
 
       const tasks = Array.isArray(result) ? result : [];
       setSimulationTasks(tasks);
+
+      // Update summary metrics based on fetched tasks
+      setTotalIssueCount(tasks.length);
+      setOpenIssueCount(tasks.length); // All fetched tasks are unresolved per JQL
+
+      // Count overdue issues before simulation
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const overdue = tasks.filter(t => t.duedate && new Date(t.duedate) < today).length;
+      setOverdueCount(overdue);
+
       setHasFetchedSimulationData(true);
       setHasPermissionError(false);
       setStatus('complete');
@@ -319,7 +330,10 @@ const App = () => {
                   borderRadius="border.radius.200"
                 >
                   {(() => {
-                    const sim = calculateSimulation(task, teamCognitiveLoad, systemComplexity, absenceRisk);
+                    // Create a deterministic seed from the task key to prevent 
+                    // the "flicker" effect where sickness state jumps while moving sliders.
+                    const seed = (task.key.split('-')[1] || 0) % 100 / 100;
+                    const sim = calculateSimulation(task, teamCognitiveLoad, systemComplexity, absenceRisk, seed);
                     const originalDate = sim.originalDate || (task.duedate ? new Date(task.duedate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
                     return (
                       <Inline space="space.150" alignBlock="center">
