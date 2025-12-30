@@ -1,4 +1,4 @@
-Jira Time Machine is an Atlassian Forge application designed to transform static project backlogs into dynamic "Future Simulations." By leveraging a simplified AI World Model framework, it helps Project Managers visualize the "Emergent Workflows" and hidden risks that traditional burndown charts often miss.
+This is still a early protype. Jira Time Machine is an Atlassian Forge application designed to transform static project backlogs into dynamic "Future Simulations." By leveraging a simplified AI World Model framework, it helps Project Managers visualize the "Emergent Workflows" and hidden risks that traditional burndown charts often miss.
 
 🚀 Key Features
 Stochastic Risk Modeling: Uses Monte Carlo-style logic to simulate random "shocks" like team member sickness or unexpected absences.
