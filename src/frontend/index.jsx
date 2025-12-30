@@ -67,6 +67,8 @@ const App = () => {
   const [hasFetchedSimulationData, setHasFetchedSimulationData] = useState(false);
   // Current status of the simulation: 'idle', 'running', or 'complete'
   const [status, setStatus] = useState('idle');
+  // Timestamp of the last successful data fetch from Jira
+  const [lastSyncTime, setLastSyncTime] = useState(null);
 
   /**
    * Shared helper to (re)fetch simulation data for the current project.
@@ -136,6 +138,7 @@ const App = () => {
       setHasFetchedSimulationData(true);
       setHasPermissionError(false);
       setStatus('complete');
+      setLastSyncTime(new Date().toLocaleTimeString());
 
       console.log('[Frontend] Set simulationTasks to:', tasks);
       console.log('[Frontend] Task count:', tasks.length);
@@ -451,13 +454,21 @@ const App = () => {
 
       {/* Main action area */}
       <Box paddingBlock="space.100">
-        <Button
-          appearance="primary" // Primary buttons are blue in Jira/Atlassian products.
-          shouldFitContainer
-          onClick={refreshSimulationData}
-        >
-          🔄 Refresh Data
-        </Button>
+        <Stack space="space.050" alignInline="center">
+          <Button
+            appearance="primary"
+            shouldFitContainer
+            onClick={refreshSimulationData}
+            isLoading={status === 'running'}
+          >
+            {status === 'running' ? 'Syncing...' : '📡 Sync Jira Data'}
+          </Button>
+          {lastSyncTime && (
+            <Text size="small" color="color.text.subtle">
+              Last synced: {lastSyncTime}
+            </Text>
+          )}
+        </Stack>
       </Box>
 
       {/* Loading bar / progress feedback while the simulation is "running" */}
