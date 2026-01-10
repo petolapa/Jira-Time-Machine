@@ -13,7 +13,8 @@ async function analyzeEmergentWorkflows(tasks) {
 
         // In a real scenario, we'd process the prompt here or on the GCP side.
         // We send the raw data to GCP to keep the Forge resolver light.
-        const response = await forgeFetch('gcp-simulation-engine', {
+        // Use absolute URL for fetch (remote key is for requestRemote)
+        const response = await forgeFetch('https://us-central1-gen-lang-client-0395589036.cloudfunctions.net/analyze-workflow', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

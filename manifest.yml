@@ -20,7 +20,7 @@ app:
   id: ari:cloud:ecosystem::app/0087095c-82be-4370-83d9-04e01de63d75
 remotes:
   - key: gcp-simulation-engine
-    baseUrl: https://simulation-engine-gcp.a.run.app
+    baseUrl: https://us-central1-gen-lang-client-0395589036.cloudfunctions.net/analyze-workflow
 permissions:
   scopes:
     - read:jira-work
@@ -28,4 +28,4 @@ permissions:
   external:
     fetch:
       backend:
-        - https://simulation-engine-gcp.a.run.app
+        - https://us-central1-gen-lang-client-0395589036.cloudfunctions.net/analyze-workflow
