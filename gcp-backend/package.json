@@ -1,0 +1,10 @@
+{
+    "name": "jira-time-machine-gcp-backend",
+    "version": "1.0.0",
+    "description": "GCP Backend for Jira Time Machine Gemini Integration",
+    "main": "index.js",
+    "dependencies": {
+        "@google-cloud/functions-framework": "^3.0.0",
+        "@google-cloud/vertexai": "^1.0.0"
+    }
+}

@@ -7,7 +7,7 @@
  * - Absence Risk (Stochastic): Random chance of worker sickness causing a 3-day block
  * - SimulatedDays = (RemainingDays * velocityModifier) + complexityDays + sicknessDays
  */
-export const calculateSimulation = (task, load, complexity, absenceRisk, randomSeed = Math.random()) => {
+const calculateSimulation = (task, load, complexity, absenceRisk, randomSeed = Math.random(), tangibleShock = null) => {
     // Cognitive Load: treated as Velocity Drag
     const velocityModifier = 1 + (load / 100);
 
@@ -18,32 +18,60 @@ export const calculateSimulation = (task, load, complexity, absenceRisk, randomS
     const isWorkerSick = (randomSeed * 100) < absenceRisk;
     const sicknessDays = isWorkerSick ? 3 : 0;
 
-    // Determine baseline date: if task is overdue, use today; otherwise use the due date
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Tangible shock (new feature)
+    let shockDays = 0;
+    let isShocked = false;
+    if (tangibleShock && tangibleShock.memberIds && tangibleShock.memberIds.length > 0) {
+        const isMemberAffected = task.assignee && tangibleShock.memberIds.includes(task.assignee.accountId);
+        if (isMemberAffected) {
+            if (tangibleShock.action === 'sick3') {
+                shockDays = 3;
+                isShocked = true;
+            }
+        }
+    }
 
-    const originalDueDate = task.duedate ? new Date(task.duedate) : null;
+    // Forced UTC parsing to avoid timezone-related date shifts
+    const parseDate = (d) => {
+        if (!d) return null;
+        const dateStr = d.includes('T') ? d : `${d}T00:00:00Z`;
+        return new Date(dateStr);
+    };
+
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+
+    const originalDueDate = parseDate(task.duedate);
     if (originalDueDate) {
-        originalDueDate.setHours(0, 0, 0, 0);
+        originalDueDate.setUTCHours(0, 0, 0, 0);
     }
 
     // Check if task is overdue (due date is in the past)
     const isOverdue = originalDueDate && originalDueDate < today;
 
-    // Set baseline: use today if overdue, otherwise use original due date (or today if no due date)
-    const baselineDate = isOverdue ? today : (originalDueDate || today);
-
-    // Calculate remaining days from baseline to original due date (for velocity calculation)
+    // We always calculate remaining work from "today" for the What-if simulation
     const remainingDays = originalDueDate
-        ? Math.max(0, Math.ceil((originalDueDate - baselineDate) / (1000 * 60 * 60 * 24)))
+        ? Math.max(0, Math.round((originalDueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)))
         : 0;
 
-    // Apply the formula: SimulatedDays = (RemainingDays * velocityModifier) + complexityDays + sicknessDays
-    const simulatedDays = (remainingDays * velocityModifier) + complexityDays + sicknessDays;
+    // Apply the formula: SimulatedDays = (RemainingDays * velocityModifier) + complexityDays + sicknessDays + shockDays
+    const simulatedDays = (remainingDays * velocityModifier) + complexityDays + sicknessDays + shockDays;
 
-    // Calculate the simulated date by adding simulated days to baseline
-    const simulatedDateObj = new Date(baselineDate);
-    simulatedDateObj.setDate(simulatedDateObj.getDate() + Math.ceil(simulatedDays));
+    // Help to add days while skipping weekends
+    const addBusinessDays = (startDate, daysToAdd) => {
+        let date = new Date(startDate);
+        let addedDays = 0;
+        while (addedDays < daysToAdd) {
+            date.setDate(date.getDate() + 1);
+            if (date.getDay() !== 0 && date.getDay() !== 6) { // Skip Sunday (0) and Saturday (6)
+                addedDays++;
+            }
+        }
+        return date;
+    };
+
+    // Calculate the simulated date by adding simulated days to "today" (skipping weekends)
+    const simulatedDateObj = addBusinessDays(today, Math.ceil(simulatedDays));
 
     // Calculate risk days (total additional days beyond baseline)
     const riskDays = Math.ceil(simulatedDays - remainingDays);
@@ -67,8 +95,11 @@ export const calculateSimulation = (task, load, complexity, absenceRisk, randomS
         delayDays,
         riskDays,
         isSick: isWorkerSick,
+        isShocked,
         riskLevel,
         isOverdue,
         originalDate: originalDueDate ? formatDate(originalDueDate) : null,
     };
 };
+
+module.exports = { calculateSimulation };

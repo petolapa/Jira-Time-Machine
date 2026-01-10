@@ -1,5 +1,6 @@
 const Resolver = require('@forge/resolver');
 const { route, asUser } = require('@forge/api');
+const { analyzeEmergentWorkflows } = require('./gcpSimResolver');
 
 const resolver = new Resolver.default ? new Resolver.default() : new Resolver();
 
@@ -106,6 +107,40 @@ resolver.define('fetchSimulationData', async (req) => {
 resolver.define('getText', (req) => {
   console.log(req);
   return 'Hello, world!';
+});
+
+resolver.define('fetchProjectMembers', async (req) => {
+  try {
+    const { projectKey } = req.payload || {};
+    if (!projectKey) return [];
+
+    console.log('[Backend] Fetching project members for:', projectKey);
+    const response = await asUser().requestJira(
+      route`/rest/api/3/user/assignable/search?project=${projectKey}`
+    );
+    const users = await response.json();
+
+    // Clean and sort user data
+    return Array.isArray(users) ? users
+      .filter(u => u.accountType === 'atlassian')
+      .map(u => ({
+        accountId: u.accountId,
+        displayName: u.displayName,
+        avatarUrl: u.avatarUrls ? u.avatarUrls['24x24'] : null
+      }))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName)) : [];
+  } catch (error) {
+    console.error('[Backend] Error fetching project members:', error);
+    return [];
+  }
+});
+
+resolver.define('analyzeEmergentWorkflows', async (req) => {
+  // 1. Get Project Data
+  const tasks = await resolver.getDefinitions().fetchSimulationData(req);
+
+  // 2. Delegate to GCP
+  return await analyzeEmergentWorkflows(tasks);
 });
 
 // Verify resolver definitions are set up correctly

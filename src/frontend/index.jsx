@@ -12,6 +12,12 @@ import ForgeReconciler, {
   Icon,
   Inline,
   useProductContext,
+  Select,
+  Option,
+  Label,
+  Badge,
+  Lozenge,
+  Spinner,
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
 import { calculateSimulation } from './simulationLogic';
@@ -69,6 +75,16 @@ const App = () => {
   const [status, setStatus] = useState('idle');
   // Timestamp of the last successful data fetch from Jira
   const [lastSyncTime, setLastSyncTime] = useState(null);
+  // List of project members for selection
+  const [projectMembers, setProjectMembers] = useState([]);
+  // Selected members for the "Tangible Scenario"
+  const [selectedMembers, setSelectedMembers] = useState([]);
+  // Selected action for the scenario (e.g. 'sick')
+  const [selectedAction, setSelectedAction] = useState(null);
+  // AI-powered analysis results from Gemini
+  const [aiAnalysis, setAiAnalysis] = useState(null);
+  // Loading state for AI analysis
+  const [isAIAnalysisRunning, setIsAIAnalysisRunning] = useState(false);
 
   /**
    * Shared helper to (re)fetch simulation data for the current project.
@@ -140,6 +156,10 @@ const App = () => {
       setStatus('complete');
       setLastSyncTime(new Date().toLocaleTimeString());
 
+      // Also fetch project members when data is refreshed
+      const members = await invoke('fetchProjectMembers', { projectKey });
+      setProjectMembers(Array.isArray(members) ? members : []);
+
       console.log('[Frontend] Set simulationTasks to:', tasks);
       console.log('[Frontend] Task count:', tasks.length);
     } catch (error) {
@@ -158,6 +178,36 @@ const App = () => {
       if (statusCode === 403) {
         setHasPermissionError(true);
       }
+    }
+  };
+
+  /**
+   * Triggers the AI-powered emergent risk analysis using Gemini via the GCP remote.
+   * This sends the current backlog data to the GCP backend for holistic reasoning.
+   */
+  const runAIAnalysis = async () => {
+    const extensionProjectKey = productContext?.extension?.project?.key || productContext?.extension?.projectKey || null;
+    const projectKey = extensionProjectKey || platformContext?.project?.key || null;
+
+    if (!projectKey) return;
+
+    try {
+      setIsAIAnalysisRunning(true);
+      console.log('[Frontend] Requesting AI Analysis for project:', projectKey);
+
+      const result = await invoke('analyzeEmergentWorkflows', { projectKey });
+      console.log('[Frontend] AI Analysis Result:', result);
+
+      setAiAnalysis(result);
+    } catch (error) {
+      console.error('[Frontend] AI Analysis failed:', error);
+      setAiAnalysis({
+        volatilityScore: 0,
+        identifiedRisks: [{ type: 'Error', description: 'Failed to communicate with AI Simulation Engine', severity: 'High' }],
+        strategicAdvice: ['Refresh the page or check GCP deployment.']
+      });
+    } finally {
+      setIsAIAnalysisRunning(false);
     }
   };
 
@@ -336,7 +386,13 @@ const App = () => {
                     // Create a deterministic seed from the task key to prevent 
                     // the "flicker" effect where sickness state jumps while moving sliders.
                     const seed = (task.key.split('-')[1] || 0) % 100 / 100;
-                    const sim = calculateSimulation(task, teamCognitiveLoad, systemComplexity, absenceRisk, seed);
+
+                    const tangibleShock = {
+                      memberIds: selectedMembers,
+                      action: selectedAction
+                    };
+
+                    const sim = calculateSimulation(task, teamCognitiveLoad, systemComplexity, absenceRisk, seed, tangibleShock);
                     const originalDate = sim.originalDate || (task.duedate ? new Date(task.duedate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
                     return (
                       <Inline space="space.150" alignBlock="center">
@@ -344,8 +400,8 @@ const App = () => {
                         <Text>{task.summary}</Text>
                         <Text>
                           {sim.isOverdue
-                            ? `📅 ${originalDate} → 🔮 ${sim.simulatedDate} (⚠️ +${sim.riskDays}d${sim.isSick ? ' 🤒' : ''})`
-                            : `📅 ${originalDate} → 🔮 ${sim.simulatedDate} (+${sim.riskDays}d${sim.isSick ? ' 🤒' : ''})`}
+                            ? `📅 ${originalDate} → 🔮 ${sim.simulatedDate} (⚠️ +${sim.riskDays}d${sim.isSick ? ' 🤒' : ''}${sim.isShocked ? ' ⚡' : ''})`
+                            : `📅 ${originalDate} → 🔮 ${sim.simulatedDate} (+${sim.riskDays}d${sim.isSick ? ' 🤒' : ''}${sim.isShocked ? ' ⚡' : ''})`}
                         </Text>
                         <Text fontSize="small" color="color.text.subtle">
                           {task.assignee ? task.assignee.displayName : 'Unassigned'}
@@ -452,17 +508,90 @@ const App = () => {
         </Stack>
       </Box>
 
+      {/* Tangible Scenarios Section */}
+      <Box paddingBlock="space.200" borderBlockEnd="standard">
+        <Stack space="space.150">
+          <Heading size="small">Tangible Scenarios</Heading>
+          <Inline space="space.200" alignBlock="end">
+            <Box style={{ width: '45%' }}>
+              <Label labelFor="member-select">Select Project Members</Label>
+              <Select
+                id="member-select"
+                isMulti
+                placeholder="Choose one or more members..."
+                options={projectMembers.map(m => ({ label: m.displayName, value: m.accountId }))}
+                onChange={(vals) => setSelectedMembers(vals.map(v => v.value))}
+              />
+            </Box>
+            <Box style={{ width: '35%' }}>
+              <Label labelFor="action-select">Targeted Action</Label>
+              <Select
+                id="action-select"
+                placeholder="Choose an effect..."
+                options={[
+                  { label: '🤒 Out sick (3 days)', value: 'sick3' },
+                  { label: '🌴 On vacation (7 days - Planned)', value: 'vacation7' },
+                ]}
+                onChange={(val) => setSelectedAction(val ? val.value : null)}
+              />
+            </Box>
+          </Inline>
+        </Stack>
+      </Box>
+
+      {/* Tangible Scenarios Section */}
+      <Box paddingBlock="space.150">
+        <Stack space="space.150">
+          <Heading size="small">Tangible Scenarios (Member Shocks)</Heading>
+          <Inline space="space.200" alignBlock="end">
+            <Box style={{ width: '45%' }}>
+              <Label labelFor="member-select">Select Project Members</Label>
+              <Select
+                id="member-select"
+                isMulti
+                placeholder="Choose one or more members..."
+                options={projectMembers.map(m => ({ label: m.displayName, value: m.accountId }))}
+                onChange={(vals) => setSelectedMembers(vals.map(v => v.value))}
+              />
+            </Box>
+            <Box style={{ width: '35%' }}>
+              <Label labelFor="action-select">Targeted Action</Label>
+              <Select
+                id="action-select"
+                placeholder="Choose an effect..."
+                options={[
+                  { label: '🤒 Out sick (3 days)', value: 'sick3' },
+                  { label: '🌴 On vacation (7 days - Planned)', value: 'vacation7' },
+                ]}
+                onChange={(val) => setSelectedAction(val ? val.value : null)}
+              />
+            </Box>
+          </Inline>
+        </Stack>
+      </Box>
+
       {/* Main action area */}
       <Box paddingBlock="space.100">
-        <Stack space="space.050" alignInline="center">
-          <Button
-            appearance="primary"
-            shouldFitContainer
-            onClick={refreshSimulationData}
-            isLoading={status === 'running'}
-          >
-            {status === 'running' ? 'Syncing...' : '📡 Sync Jira Data'}
-          </Button>
+        <Stack space="space.100">
+          <Inline space="space.100" alignBlock="center">
+            <Button
+              appearance="primary"
+              onClick={refreshSimulationData}
+              isLoading={status === 'running'}
+            >
+              {status === 'running' ? 'Syncing...' : '📡 Sync Jira Data'}
+            </Button>
+
+            <Button
+              appearance="warning"
+              onClick={runAIAnalysis}
+              isLoading={isAIAnalysisRunning}
+              isDisabled={simulationTasks.length === 0}
+            >
+              {isAIAnalysisRunning ? 'AI Reasoning...' : '✨ Generate AI Insights'}
+            </Button>
+          </Inline>
+
           {lastSyncTime && (
             <Text size="small" color="color.text.subtle">
               Last synced: {lastSyncTime}
@@ -470,6 +599,59 @@ const App = () => {
           )}
         </Stack>
       </Box>
+
+      {/* AI Insights Dashboard - Premium Section */}
+      {aiAnalysis && (
+        <Box
+          padding="space.300"
+          backgroundColor="color.background.accent.blue.subtle"
+          borderRadius="border.radius.300"
+          marginBlock="space.200"
+        >
+          <Stack space="space.200">
+            <Inline space="space.100" alignBlock="center">
+              <Heading size="medium">✨ AI Insights Dashboard</Heading>
+              <Badge appearance="added">Gemini 1.5 Pro</Badge>
+            </Inline>
+
+            <Box
+              backgroundColor="color.background.neutral"
+              padding="space.200"
+              borderRadius="border.radius.200"
+            >
+              <Inline space="space.400" alignBlock="center" grow="fill">
+                <Box>
+                  <Text size="small" color="color.text.subtle">Schedule Volatility</Text>
+                  <Heading size="large" color={aiAnalysis.volatilityScore > 50 ? 'color.text.danger' : 'color.text.success'}>
+                    {aiAnalysis.volatilityScore}%
+                  </Heading>
+                </Box>
+                <Box style={{ flexGrow: 1 }}>
+                  <Text weight="medium">Identified Emergent Risks:</Text>
+                  <Stack space="space.050">
+                    {aiAnalysis.identifiedRisks?.map((risk, idx) => (
+                      <Inline key={idx} space="space.100" alignBlock="center">
+                        <Lozenge appearance={risk.severity === 'High' ? 'removed' : risk.severity === 'Medium' ? 'moved' : 'success'}>
+                          {risk.type}
+                        </Lozenge>
+                        <Text size="small">{risk.description}</Text>
+                      </Inline>
+                    ))}
+                  </Stack>
+                </Box>
+              </Inline>
+            </Box>
+
+            <SectionMessage title="Strategic Recommendations" appearance="warning">
+              <Stack space="space.050">
+                {aiAnalysis.strategicAdvice?.map((advice, idx) => (
+                  <Text key={idx}>• {advice}</Text>
+                ))}
+              </Stack>
+            </SectionMessage>
+          </Stack>
+        </Box>
+      )}
 
       {/* Loading bar / progress feedback while the simulation is "running" */}
       {

@@ -1,4 +1,4 @@
-import { calculateSimulation } from './simulationLogic';
+const { calculateSimulation } = require('./simulationLogic');
 
 describe('calculateSimulation', () => {
     const mockTask = {
@@ -6,19 +6,13 @@ describe('calculateSimulation', () => {
         duedate: '2025-12-31'
     };
 
-    // Mocking Date to ensure consistent tests
-    const realDate = Date;
     beforeAll(() => {
-        global.Date = class extends realDate {
-            constructor(date) {
-                if (date) return new realDate(date);
-                return new realDate('2025-12-30'); // Today for testing
-            }
-        };
+        jest.useFakeTimers();
+        jest.setSystemTime(new Date('2025-12-30T00:00:00.000Z'));
     });
 
     afterAll(() => {
-        global.Date = realDate;
+        jest.useRealTimers();
     });
 
     test('calculates base simulation with zero load and complexity', () => {
@@ -30,29 +24,37 @@ describe('calculateSimulation', () => {
         expect(result.riskDays).toBe(0);
     });
 
-    test('adds complexity days', () => {
+    test('adds complexity days (skipping weekends)', () => {
         const result = calculateSimulation(mockTask, 0, 50, 0, 0.5);
-        // complexityDays = ceil(50/100 * 5) = 3
-        // simulatedDays = 1 + 3 = 4
-        // 2025-12-30 + 4 days = 2026-01-03
-        expect(result.simulatedDate).toBe('2026-01-03');
+        // baseline = 2025-12-30 (Tue)
+        // remaining = 1, complexityDays = 3 -> total simulated = 4 business days
+        // Tue -> Wed(1), Thu(2), Fri(3), Mon(4)
+        // result.simulatedDate will be 2026-01-05
+        expect(result.simulatedDate).toBe('2026-01-05');
         expect(result.riskDays).toBe(3);
     });
 
-    test('applies sickness delay', () => {
+    test('applies sickness delay (skipping weekends)', () => {
         const result = calculateSimulation(mockTask, 0, 0, 100, 0.5); // 100% risk
-        // sicknessDays = 3
-        // simulatedDays = 1 + 3 = 4
+        // Tue -> Wed(1), Thu(2), Fri(3), Mon(4)
+        expect(result.simulatedDate).toBe('2026-01-05');
         expect(result.isSick).toBe(true);
+    });
+
+    test('handles tangible shocks for specific members', () => {
+        const taskWithAssignee = { ...mockTask, assignee: { accountId: 'user-123' } };
+        const tangibleShock = { memberIds: ['user-123'], action: 'sick3' };
+
+        const result = calculateSimulation(taskWithAssignee, 0, 0, 0, 0.5, tangibleShock);
+        // Tue -> Wed(1), Thu(2), Fri(3), Mon(4)
+        expect(result.isShocked).toBe(true);
+        expect(result.simulatedDate).toBe('2026-01-05');
         expect(result.riskDays).toBe(3);
     });
 
     test('handles overdue tasks', () => {
         const overdueTask = { duedate: '2025-12-20' };
         const result = calculateSimulation(overdueTask, 0, 0, 0, 0.5);
-        // Overdue task uses Today (2025-12-30) as baseline.
-        // remainingDays = 0, complexity = 0, sickness = 0
-        // simulatedDate = 2025-12-30
         expect(result.isOverdue).toBe(true);
         expect(result.simulatedDate).toBe('2025-12-30');
     });
