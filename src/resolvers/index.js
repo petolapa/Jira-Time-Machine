@@ -14,10 +14,9 @@ resolver.define('saveAnalysis', async (req) => {
 
     const storageKey = `analysis_${projectKey}`;
     await storage.set(storageKey, { analysis, timestamp, projectKey });
-    console.log('[Backend] Saved analysis to storage:', storageKey);
     return { success: true };
   } catch (error) {
-    console.error('[Backend] Error saving analysis:', error);
+    console.error('Error saving analysis:', error.message);
     return { success: false, error: error.message };
   }
 });
@@ -32,10 +31,9 @@ resolver.define('loadAnalysis', async (req) => {
 
     const storageKey = `analysis_${projectKey}`;
     const cached = await storage.get(storageKey);
-    console.log('[Backend] Loaded analysis from storage:', storageKey, cached ? 'found' : 'not found');
     return cached || null;
   } catch (error) {
-    console.error('[Backend] Error loading analysis:', error);
+    console.error('Error loading analysis:', error.message);
     return null;
   }
 });
@@ -45,12 +43,10 @@ resolver.define('loadAnalysis', async (req) => {
  */
 const getProjectTasks = async (projectKey) => {
   if (!projectKey) {
-    console.warn('[Backend] getProjectTasks called without projectKey');
     return [];
   }
 
   const jql = `project = "${projectKey}" AND resolution = Unresolved ORDER BY rank DESC`;
-  console.log('[Backend] Executing JQL query for project:', projectKey);
 
   const response = await asUser().requestJira(route`/rest/api/3/search/jql`, {
     method: 'POST',
@@ -68,7 +64,6 @@ const getProjectTasks = async (projectKey) => {
   const data = await response.json();
 
   if (!data || !data.issues) {
-    console.error('[Backend] Jira API returned no issues structure');
     return [];
   }
 
@@ -102,14 +97,9 @@ resolver.define('fetchSimulationData', async (req) => {
     const { projectKey } = req?.payload || {};
     return await getProjectTasks(projectKey);
   } catch (error) {
-    console.error('[Backend] Error in fetchSimulationData:', error);
+    console.error('Error in fetchSimulationData:', error.message);
     return [];
   }
-});
-
-resolver.define('getText', (req) => {
-  console.log(req);
-  return 'Hello, world!';
 });
 
 resolver.define('fetchProjectMembers', async (req) => {
@@ -117,7 +107,6 @@ resolver.define('fetchProjectMembers', async (req) => {
     const { projectKey } = req.payload || {};
     if (!projectKey) return [];
 
-    console.log('[Backend] Fetching project members for:', projectKey);
     const response = await asUser().requestJira(
       route`/rest/api/3/user/assignable/search?project=${projectKey}`
     );
@@ -133,7 +122,7 @@ resolver.define('fetchProjectMembers', async (req) => {
       }))
       .sort((a, b) => a.displayName.localeCompare(b.displayName)) : [];
   } catch (error) {
-    console.error('[Backend] Error fetching project members:', error);
+    console.error('Error fetching project members:', error.message);
     return [];
   }
 });
@@ -147,7 +136,7 @@ resolver.define('analyzeEmergentWorkflows', async (req) => {
     // 2. Delegate to GCP (with scenarios)
     return await analyzeEmergentWorkflows(tasks, scenarios);
   } catch (error) {
-    console.error('[Backend] Error in analyzeEmergentWorkflows resolver:', error);
+    console.error('Error in analyzeEmergentWorkflows:', error.message);
     return {
       volatilityScore: 0,
       identifiedRisks: [{ type: 'Resolver Error', description: error.message, severity: 'High' }],
@@ -156,8 +145,6 @@ resolver.define('analyzeEmergentWorkflows', async (req) => {
   }
 });
 
-// Verify resolver definitions are set up correctly
 const definitions = resolver.getDefinitions();
-console.log('[Backend] Resolver definitions registered:', Object.keys(definitions));
 
 exports.handler = definitions;

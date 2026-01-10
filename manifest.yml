@@ -29,4 +29,4 @@ permissions:
   external:
     fetch:
       backend:
-        - https://us-central1-gen-lang-client-0395589036.cloudfunctions.net/analyze-workflow
+        - address: https://us-central1-gen-lang-client-0395589036.cloudfunctions.net/analyze-workflow

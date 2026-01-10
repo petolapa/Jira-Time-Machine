@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import ForgeReconciler, {
   Heading,
   Text,
-  Strong,
   Button,
   Box,
   Range,
@@ -13,11 +12,9 @@ import ForgeReconciler, {
   Inline,
   useProductContext,
   Select,
-  Option,
   Label,
   Badge,
   Lozenge,
-  Spinner,
 } from '@forge/react';
 import { invoke } from '@forge/bridge';
 import { calculateSimulation } from './simulationLogic';
@@ -37,18 +34,8 @@ import { calculateSimulation } from './simulationLogic';
  *       for the "Emergent Workflows" thesis.
  */
 const App = () => {
-  // Simple debug marker so we can verify that the UI has actually mounted.
-  console.log('App started');
-
-  // Jira context (e.g. current project) so that we can scope our risk analysis
-  // to the project where the app is opened.
-  //
-  // NOTE: useProductContext() can be temporarily undefined while Forge initialises
-  // the UI context, so we *do not* destructure directly from it. Instead we read
-  // it into a variable and perform null checks before use.
+  // Jira context - may be temporarily undefined while Forge initializes
   const productContext = useProductContext();
-  // Debug logging to inspect what context we're actually receiving from Forge.
-  console.log('DEBUG - productContext:', productContext);
   const platformContext = productContext && productContext.platformContext;
 
   // Slider-controlled inputs that represent key drivers of emergent workflow risk.
@@ -98,60 +85,29 @@ const App = () => {
    * presses the "Refresh Data" button.
    */
   const refreshSimulationData = async () => {
-    // DEBUG: Inspect the raw context we get from Forge.
-    console.log('Frontend: Raw Context:', productContext);
-
     const extensionProjectKey =
       productContext?.extension?.project?.key ||
       productContext?.extension?.projectKey ||
       null;
 
-    if (extensionProjectKey) {
-      console.log(
-        'Frontend: Detected Project Key from extension context:',
-        extensionProjectKey
-      );
-    } else {
-      console.log(
-        'Frontend: Context not ready or project key missing in extension context.'
-      );
-    }
-
     const projectKey = extensionProjectKey || platformContext?.project?.key || null;
 
     if (!projectKey) {
-      console.log(
-        'Frontend: No projectKey available yet, skipping fetchSimulationData.'
-      );
       return;
     }
 
-    console.log('Frontend: Using Project Key for simulation fetch:', projectKey);
-
     try {
       setStatus('running');
-      console.log(
-        '[Frontend] Calling invoke("fetchSimulationData") with projectKey:',
-        projectKey
-      );
       const result = await invoke('fetchSimulationData', { projectKey });
-
-      console.log('[Frontend] Received result:', result);
-      console.log('[Frontend] Result type:', typeof result);
-      console.log('[Frontend] Result is array?', Array.isArray(result));
-      console.log(
-        '[Frontend] Result length:',
-        Array.isArray(result) ? result.length : 'N/A'
-      );
 
       const tasks = Array.isArray(result) ? result : [];
       setSimulationTasks(tasks);
 
       // Update summary metrics based on fetched tasks
       setTotalIssueCount(tasks.length);
-      setOpenIssueCount(tasks.length); // All fetched tasks are unresolved per JQL
+      setOpenIssueCount(tasks.length);
 
-      // Count overdue issues before simulation
+      // Count overdue issues
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const overdue = tasks.filter(t => t.duedate && new Date(t.duedate) < today).length;
@@ -162,20 +118,11 @@ const App = () => {
       setStatus('complete');
       setLastSyncTime(new Date().toLocaleTimeString());
 
-      // Also fetch project members when data is refreshed
+      // Also fetch project members
       const members = await invoke('fetchProjectMembers', { projectKey });
       setProjectMembers(Array.isArray(members) ? members : []);
-
-      console.log('[Frontend] Set simulationTasks to:', tasks);
-      console.log('[Frontend] Task count:', tasks.length);
     } catch (error) {
-      console.error('[Frontend] Failed to fetch simulation data:', error);
-      console.error('[Frontend] Error details:', {
-        message: error.message,
-        stack: error.stack,
-        status: error?.status || error?.response?.status,
-      });
-
+      console.error('Failed to fetch simulation data:', error.message);
       setSimulationTasks([]);
       setHasFetchedSimulationData(true);
       setStatus('complete');
@@ -199,8 +146,6 @@ const App = () => {
 
     try {
       setIsAIAnalysisRunning(true);
-      console.log('[Frontend] Requesting AI Analysis for project:', projectKey);
-      console.log('[Frontend] Including Scenarios:', { selectedMembers, selectedAction, selectedIssue, selectedIssueAction });
 
       const result = await invoke('analyzeEmergentWorkflows', {
         projectKey,
@@ -211,24 +156,18 @@ const App = () => {
           issueAction: selectedIssueAction
         }
       });
-      console.log('[Frontend] AI Analysis Result:', result);
 
       setAiAnalysis(result);
       setAnalysisTimestamp(new Date().toLocaleTimeString());
 
       // Save to Forge Storage for persistence
-      const saveResult = await invoke('saveAnalysis', {
+      await invoke('saveAnalysis', {
         projectKey,
         analysis: result,
         timestamp: new Date().toISOString()
       });
-      console.log('[Frontend] Save result:', JSON.stringify(saveResult));
-
-      // Verify it was saved
-      const verifyLoad = await invoke('loadAnalysis', { projectKey });
-      console.log('[Frontend] Verify save (reload):', JSON.stringify(verifyLoad, null, 2));
     } catch (error) {
-      console.error('[Frontend] AI Analysis failed:', error);
+      console.error('AI Analysis failed:', error.message);
       setAiAnalysis({
         volatilityScore: 0,
         identifiedRisks: [{ type: 'Error', description: 'Failed to communicate with AI Simulation Engine', severity: 'High' }],
@@ -255,25 +194,16 @@ const App = () => {
       const pCtx = productContext?.platformContext;
       const projectKey = extensionProjectKey || pCtx?.project?.key || null;
 
-      console.log('[Frontend] Attempting to load cached analysis for project:', projectKey);
-      if (!projectKey) {
-        console.log('[Frontend] No project key available for cache load');
-        return;
-      }
+      if (!projectKey) return;
 
       try {
         const cached = await invoke('loadAnalysis', { projectKey });
-        console.log('[Frontend] Cache load result (raw):', JSON.stringify(cached, null, 2));
-        console.log('[Frontend] Cache has analysis?', cached?.analysis ? 'YES' : 'NO');
         if (cached && cached.analysis) {
-          console.log('[Frontend] Loaded cached analysis:', cached);
           setAiAnalysis(cached.analysis);
           setAnalysisTimestamp(new Date(cached.timestamp).toLocaleTimeString());
-        } else {
-          console.log('[Frontend] No cached analysis found in storage');
         }
       } catch (error) {
-        console.log('[Frontend] Error loading cached analysis:', error);
+        // Silent fail - no cached data is fine
       }
     };
     loadCachedAnalysis();
@@ -332,38 +262,6 @@ const App = () => {
       return '🟠 Distributed / High Friction';
     } else {
       return '🔴 Spaghetti / Entangled';
-    }
-  };
-
-  /**
-   * Helper function to interpret Team Cognitive Load value (0-100) into a user-friendly description.
-   * Returns a string with emoji and descriptive text based on the load level.
-   */
-  const getLoadDescription = (value) => {
-    if (value >= 0 && value <= 20) {
-      return '🟢 Flow State (Single Focus)';
-    } else if (value >= 21 && value <= 50) {
-      return '🔵 Normal (Standard Overhead)';
-    } else if (value >= 51 && value <= 75) {
-      return '🟠 High (Frequent Context Switching)';
-    } else {
-      return '🔴 Overloaded (Thrashing/Firefighting)';
-    }
-  };
-
-  /**
-   * Helper function to interpret System Complexity value (0-100) into a user-friendly description.
-   * Returns a string with emoji and descriptive text based on the complexity level.
-   */
-  const getComplexityDescription = (value) => {
-    if (value >= 0 && value <= 20) {
-      return '🟢 Monolith / Simple';
-    } else if (value >= 21 && value <= 50) {
-      return '🔵 Modular (Standard Integrations)';
-    } else if (value >= 51 && value <= 75) {
-      return '🟠 Distributed (Microservices)';
-    } else {
-      return '🔴 Spaghetti (Deep Dependency Chains)';
     }
   };
 
@@ -576,7 +474,7 @@ const App = () => {
                 id="member-select"
                 isMulti
                 placeholder="Choose one or more members..."
-                options={projectMembers.map(m => ({ label: m.displayName, value: m.displayName }))}
+                options={projectMembers.map(m => ({ label: m.displayName, value: m.accountId }))}
                 onChange={(vals) => setSelectedMembers(vals.map(v => v.value))}
               />
             </Box>
@@ -631,7 +529,6 @@ const App = () => {
         </Stack>
       </Box>
 
-      {/* Tangible Scenarios Section */}
 
       {/* Main action area */}
       <Box paddingBlock="space.100">
