@@ -1,8 +1,44 @@
 const Resolver = require('@forge/resolver');
-const { route, asUser } = require('@forge/api');
+const { route, asUser, storage } = require('@forge/api');
 const { analyzeEmergentWorkflows } = require('./gcpSimResolver');
 
 const resolver = new Resolver.default ? new Resolver.default() : new Resolver();
+
+/**
+ * Saves AI analysis results to Forge Storage for persistence.
+ */
+resolver.define('saveAnalysis', async (req) => {
+  try {
+    const { projectKey, analysis, timestamp } = req?.payload || {};
+    if (!projectKey || !analysis) return { success: false };
+
+    const storageKey = `analysis_${projectKey}`;
+    await storage.set(storageKey, { analysis, timestamp, projectKey });
+    console.log('[Backend] Saved analysis to storage:', storageKey);
+    return { success: true };
+  } catch (error) {
+    console.error('[Backend] Error saving analysis:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+/**
+ * Loads cached AI analysis results from Forge Storage.
+ */
+resolver.define('loadAnalysis', async (req) => {
+  try {
+    const { projectKey } = req?.payload || {};
+    if (!projectKey) return null;
+
+    const storageKey = `analysis_${projectKey}`;
+    const cached = await storage.get(storageKey);
+    console.log('[Backend] Loaded analysis from storage:', storageKey, cached ? 'found' : 'not found');
+    return cached || null;
+  } catch (error) {
+    console.error('[Backend] Error loading analysis:', error);
+    return null;
+  }
+});
 
 /**
  * Fetches and transforms Jira issues for a given project key.
@@ -104,12 +140,12 @@ resolver.define('fetchProjectMembers', async (req) => {
 
 resolver.define('analyzeEmergentWorkflows', async (req) => {
   try {
-    const { projectKey } = req?.payload || {};
+    const { projectKey, scenarios } = req?.payload || {};
     // 1. Get Project Data
     const tasks = await getProjectTasks(projectKey);
 
-    // 2. Delegate to GCP
-    return await analyzeEmergentWorkflows(tasks);
+    // 2. Delegate to GCP (with scenarios)
+    return await analyzeEmergentWorkflows(tasks, scenarios);
   } catch (error) {
     console.error('[Backend] Error in analyzeEmergentWorkflows resolver:', error);
     return {

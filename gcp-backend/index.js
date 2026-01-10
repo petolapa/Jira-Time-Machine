@@ -18,7 +18,7 @@ functions.http('analyze-workflow', async (req, res) => {
         // Initialize Vertex AI
         const vertexAI = new VertexAI({ project: 'YOUR_GCP_PROJECT_ID', location: 'us-central1' });
         const generativeModel = vertexAI.getGenerativeModel({
-            model: 'gemini-1.5-pro',
+            model: 'gemini-1.5-flash',
         });
 
         // Prepare Prompt

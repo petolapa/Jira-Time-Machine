@@ -81,10 +81,16 @@ const App = () => {
   const [selectedMembers, setSelectedMembers] = useState([]);
   // Selected action for the scenario (e.g. 'sick')
   const [selectedAction, setSelectedAction] = useState(null);
+  // Selected issue for "Issue Scenarios"
+  const [selectedIssue, setSelectedIssue] = useState(null);
+  // Selected action for the issue scenario
+  const [selectedIssueAction, setSelectedIssueAction] = useState(null);
   // AI-powered analysis results from Gemini
   const [aiAnalysis, setAiAnalysis] = useState(null);
   // Loading state for AI analysis
   const [isAIAnalysisRunning, setIsAIAnalysisRunning] = useState(false);
+  // Timestamp when the cached analysis was generated
+  const [analysisTimestamp, setAnalysisTimestamp] = useState(null);
 
   /**
    * Shared helper to (re)fetch simulation data for the current project.
@@ -194,11 +200,33 @@ const App = () => {
     try {
       setIsAIAnalysisRunning(true);
       console.log('[Frontend] Requesting AI Analysis for project:', projectKey);
+      console.log('[Frontend] Including Scenarios:', { selectedMembers, selectedAction, selectedIssue, selectedIssueAction });
 
-      const result = await invoke('analyzeEmergentWorkflows', { projectKey });
+      const result = await invoke('analyzeEmergentWorkflows', {
+        projectKey,
+        scenarios: {
+          members: selectedMembers,
+          memberAction: selectedAction,
+          targetIssue: selectedIssue,
+          issueAction: selectedIssueAction
+        }
+      });
       console.log('[Frontend] AI Analysis Result:', result);
 
       setAiAnalysis(result);
+      setAnalysisTimestamp(new Date().toLocaleTimeString());
+
+      // Save to Forge Storage for persistence
+      const saveResult = await invoke('saveAnalysis', {
+        projectKey,
+        analysis: result,
+        timestamp: new Date().toISOString()
+      });
+      console.log('[Frontend] Save result:', JSON.stringify(saveResult));
+
+      // Verify it was saved
+      const verifyLoad = await invoke('loadAnalysis', { projectKey });
+      console.log('[Frontend] Verify save (reload):', JSON.stringify(verifyLoad, null, 2));
     } catch (error) {
       console.error('[Frontend] AI Analysis failed:', error);
       setAiAnalysis({
@@ -220,6 +248,35 @@ const App = () => {
     }
 
     refreshSimulationData();
+
+    // Load cached analysis from Forge Storage
+    const loadCachedAnalysis = async () => {
+      const extensionProjectKey = productContext?.extension?.project?.key || productContext?.extension?.projectKey || null;
+      const pCtx = productContext?.platformContext;
+      const projectKey = extensionProjectKey || pCtx?.project?.key || null;
+
+      console.log('[Frontend] Attempting to load cached analysis for project:', projectKey);
+      if (!projectKey) {
+        console.log('[Frontend] No project key available for cache load');
+        return;
+      }
+
+      try {
+        const cached = await invoke('loadAnalysis', { projectKey });
+        console.log('[Frontend] Cache load result (raw):', JSON.stringify(cached, null, 2));
+        console.log('[Frontend] Cache has analysis?', cached?.analysis ? 'YES' : 'NO');
+        if (cached && cached.analysis) {
+          console.log('[Frontend] Loaded cached analysis:', cached);
+          setAiAnalysis(cached.analysis);
+          setAnalysisTimestamp(new Date(cached.timestamp).toLocaleTimeString());
+        } else {
+          console.log('[Frontend] No cached analysis found in storage');
+        }
+      } catch (error) {
+        console.log('[Frontend] Error loading cached analysis:', error);
+      }
+    };
+    loadCachedAnalysis();
   }, [productContext]);
 
   /**
@@ -511,7 +568,7 @@ const App = () => {
       {/* Tangible Scenarios Section */}
       <Box paddingBlock="space.200" borderBlockEnd="standard">
         <Stack space="space.150">
-          <Heading size="small">Tangible Scenarios</Heading>
+          <Heading size="small">Scenarios (Member)</Heading>
           <Inline space="space.200" alignBlock="end">
             <Box style={{ width: '45%' }}>
               <Label labelFor="member-select">Select Project Members</Label>
@@ -519,18 +576,21 @@ const App = () => {
                 id="member-select"
                 isMulti
                 placeholder="Choose one or more members..."
-                options={projectMembers.map(m => ({ label: m.displayName, value: m.accountId }))}
+                options={projectMembers.map(m => ({ label: m.displayName, value: m.displayName }))}
                 onChange={(vals) => setSelectedMembers(vals.map(v => v.value))}
               />
             </Box>
             <Box style={{ width: '35%' }}>
-              <Label labelFor="action-select">Targeted Action</Label>
+              <Label labelFor="action-select">Action</Label>
               <Select
                 id="action-select"
                 placeholder="Choose an effect..."
                 options={[
                   { label: '🤒 Out sick (3 days)', value: 'sick3' },
                   { label: '🌴 On vacation (7 days - Planned)', value: 'vacation7' },
+                  { label: '🚨 Urgent Production Bug (2 days)', value: 'urgent_bug' },
+                  { label: '🔄 Team Re-org (20% Capacity Drop)', value: 'reorg20' },
+                  { label: '👶 New Hire Onboarding (Senior Drain)', value: 'new_hire' },
                 ]}
                 onChange={(val) => setSelectedAction(val ? val.value : null)}
               />
@@ -539,36 +599,39 @@ const App = () => {
         </Stack>
       </Box>
 
-      {/* Tangible Scenarios Section */}
-      <Box paddingBlock="space.150">
+      {/* Issue Scenarios Section */}
+      <Box paddingBlock="space.200" borderBlockEnd="standard">
         <Stack space="space.150">
-          <Heading size="small">Tangible Scenarios (Member Shocks)</Heading>
+          <Heading size="small">Scenarios (Issue)</Heading>
           <Inline space="space.200" alignBlock="end">
             <Box style={{ width: '45%' }}>
-              <Label labelFor="member-select">Select Project Members</Label>
+              <Label labelFor="issue-select">Select Issue</Label>
               <Select
-                id="member-select"
-                isMulti
-                placeholder="Choose one or more members..."
-                options={projectMembers.map(m => ({ label: m.displayName, value: m.accountId }))}
-                onChange={(vals) => setSelectedMembers(vals.map(v => v.value))}
+                id="issue-select"
+                placeholder="Choose an issue..."
+                options={simulationTasks.map(t => ({ label: `${t.key}: ${t.summary}`, value: t.key }))}
+                onChange={(val) => setSelectedIssue(val ? val.value : null)}
               />
             </Box>
             <Box style={{ width: '35%' }}>
-              <Label labelFor="action-select">Targeted Action</Label>
+              <Label labelFor="issue-action-select">Action</Label>
               <Select
-                id="action-select"
+                id="issue-action-select"
                 placeholder="Choose an effect..."
                 options={[
-                  { label: '🤒 Out sick (3 days)', value: 'sick3' },
-                  { label: '🌴 On vacation (7 days - Planned)', value: 'vacation7' },
+                  { label: '🐢 Delayed by 3 days', value: 'delay3' },
+                  { label: '🛑 Blocked by dependencies', value: 'blocked' },
+                  { label: '🐛 Scope Creep (Size doubled)', value: 'scope_creep' },
+                  { label: '💣 Tech Debt Explosion (Refactor needed)', value: 'tech_debt' },
                 ]}
-                onChange={(val) => setSelectedAction(val ? val.value : null)}
+                onChange={(val) => setSelectedIssueAction(val ? val.value : null)}
               />
             </Box>
           </Inline>
         </Stack>
       </Box>
+
+      {/* Tangible Scenarios Section */}
 
       {/* Main action area */}
       <Box paddingBlock="space.100">
@@ -611,7 +674,10 @@ const App = () => {
           <Stack space="space.200">
             <Inline space="space.100" alignBlock="center">
               <Heading size="medium">✨ AI Insights Dashboard</Heading>
-              <Badge appearance="added">Gemini 1.5 Pro</Badge>
+              <Badge appearance="added">Gemini 2.0 Flash</Badge>
+              {analysisTimestamp && (
+                <Badge appearance="default">Cached: {analysisTimestamp}</Badge>
+              )}
             </Inline>
 
             <Box
@@ -631,9 +697,11 @@ const App = () => {
                   <Stack space="space.050">
                     {aiAnalysis.identifiedRisks?.map((risk, idx) => (
                       <Inline key={idx} space="space.100" alignBlock="center">
-                        <Lozenge appearance={risk.severity === 'High' ? 'removed' : risk.severity === 'Medium' ? 'moved' : 'success'}>
-                          {risk.type}
-                        </Lozenge>
+                        <Box style={{ flexShrink: 0, minWidth: '100px' }}>
+                          <Lozenge appearance={risk.severity === 'High' ? 'removed' : risk.severity === 'Medium' ? 'moved' : 'success'}>
+                            {risk.type}
+                          </Lozenge>
+                        </Box>
                         <Text size="small">{risk.description}</Text>
                       </Inline>
                     ))}

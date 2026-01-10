@@ -23,10 +23,14 @@ You MUST return valid JSON ONLY, with the following structure:
 {
   "volatilityScore": (0-100),
   "identifiedRisks": [
-    { "type": "Silo|Complexity|Stochastic", "description": "...", "severity": "High|Medium|Low" }
+    { "type": "Silo|Complexity|Unpredictable", "description": "...", "severity": "High|Medium|Low" }
   ],
   "strategicAdvice": [ "...", "...", "..." ]
 }
+
+
+### SCENARIO CONTEXT (SIMULATION):
+{{SCENARIOS}}
 
 PROJECT DATA:
 {{PROJECT_DATA_JSON}}

@@ -7,9 +7,9 @@ const { WORKFLOW_ANALYSIS_PROMPT } = require('../prompts/workflowAnalysis');
  * @param {Array} tasks - Array of task objects from fetchSimulationData
  * @returns {Promise<Object>} Analysis results from Gemini
  */
-async function analyzeEmergentWorkflows(tasks) {
+async function analyzeEmergentWorkflows(tasks, scenarios) {
     try {
-        console.log('[GCP Resolver] Preparing analysis for', tasks.length, 'tasks');
+        console.log('[GCP Resolver] Preparing analysis for', tasks.length, 'tasks with scenarios:', scenarios);
 
         // In a real scenario, we'd process the prompt here or on the GCP side.
         // We send the raw data to GCP to keep the Forge resolver light.
@@ -21,6 +21,7 @@ async function analyzeEmergentWorkflows(tasks) {
             },
             body: JSON.stringify({
                 tasks: tasks,
+                scenarios: scenarios, // Pass scenarios to GCP
                 promptTemplate: WORKFLOW_ANALYSIS_PROMPT
             }),
         });
